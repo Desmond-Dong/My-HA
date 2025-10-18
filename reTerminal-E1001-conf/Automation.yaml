@@ -1,0 +1,19 @@
+alias: PC Power On
+description: Powers on the desktop PC when the ReTerminal key is pressed.
+triggers:
+  - trigger: state
+    entity_id:
+      - binary_sensor.reterminal_e1001_key1
+    to: "on"
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 3
+conditions: []
+actions:
+  - action: button.press
+    metadata: {}
+    data: {}
+    target:
+      entity_id: button.desktop
+mode: single
