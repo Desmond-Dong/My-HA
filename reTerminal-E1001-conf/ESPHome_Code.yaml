@@ -39,6 +39,10 @@ wifi:
     password: "your password"  # please change the password
 #web_server:
 #  version: 3
+psram:
+  mode: octal
+  speed: 80MHz
+  
 captive_portal:
 
 #esp32_ble_tracker:
