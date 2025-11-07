@@ -23,11 +23,45 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "your key" # please change this value 
+    key: "your key"
+  services: # for playing music via Home Assistant
+    - service: play_song
+      variables:
+        song_data: string
+      then:
+        - lambda: |-
+            auto *bz = id(buzzer_pwm);
+            std::string s = song_data;
+            size_t start = 0;
 
+            while (true) {
+              size_t comma = s.find(',', start);
+              std::string note = s.substr(start, comma - start);
+              if (note.empty()) break;
+
+              size_t colon = note.find(':');
+              if (colon != std::string::npos) {
+                int freq = atoi(note.substr(0, colon).c_str());
+                int dur  = atoi(note.substr(colon + 1).c_str());
+
+                if (freq > 0) {
+                  // ✅ 正确写法
+                  bz->update_frequency(freq);
+                  bz->set_level(0.6);
+                } else {
+                  bz->set_level(0);
+                }
+                delay(dur);
+              }
+
+              if (comma == std::string::npos) break;
+              start = comma + 1;
+            }
+
+            bz->set_level(0);
 ota:
   - platform: esphome
-    password: "your password" # please change the password
+    password: "your ota password"
 
 wifi:
   ssid: !secret wifi_ssid
@@ -36,24 +70,22 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Reterminal-E1001"
-    password: "your password"  # please change the password
+    password: "your password"
 #web_server:
 #  version: 3
 psram:
   mode: octal
   speed: 80MHz
-  
+
 captive_portal:
 
-#esp32_ble_tracker:
-#  scan_parameters:
-    # We currently use the defaults to ensure Bluetooth
-    # can co-exist with WiFi In the future we may be able to
-    # enable the built-in coexistence logic in ESP-IDF
-#    active: true
 
-#bluetooth_proxy:
-#  active: true
+# BLE Proxy
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+bluetooth_proxy:
+  active: true
 
 # Deep-sleep, wake by GPIO4
 #deep_sleep:
@@ -62,7 +94,19 @@ captive_portal:
 #  sleep_duration: 10min
 #  wakeup_pin: GPIO4          # Right white button
 #  wakeup_pin_mode: INVERT_WAKEUP
+i2s_audio:
+  i2s_lrclk_pin: GPIO38
+  i2s_bclk_pin: GPIO39
 
+microphone:
+  - platform: i2s_audio
+    id: i2s_mic
+    i2s_din_pin: GPIO40
+    adc_type: external
+    sample_rate: 16000
+    bits_per_sample: 32bit
+    channel: left
+    
 # SPI / I²C
 spi:
   clk_pin: GPIO7
@@ -77,6 +121,7 @@ light:
 #    id: onboard_led
   - platform: monochromatic
     output: buzzer_pwm
+    icon: "mdi:volume-high"
     name: "Buzzer"
     id: buzzer
     # Setting transition length to 0s makes the buzzer turn on and off instantly.
@@ -243,18 +288,20 @@ time:
         then:
           - if:
               condition:
+                # 判断小时数不是 1~6
                 lambda: |-
                   auto now = id(sntp_time).now();
                   return !(now.hour >= 1 && now.hour < 6);
               then:
+                # 仅非 1~6 点执行更新
                 - component.update: dashboard_image
-# download image from HA
+# download the image from the Home Assistant server
 online_image:
   - id: dashboard_image
     format: BMP
     type: BINARY
     buffer_size: 65535
-    url: http://your_HA_IP:10000/lovelace/3?viewport=800x480&eink=2&format=bmp&lang=zh-cn #change your_HA_IP
+    url: http://172.16.1.119:10000/lovelace/3?viewport=800x480&eink=2&format=bmp&lang=zh-cn
     on_download_finished:
       - component.update: epaper_display
 
