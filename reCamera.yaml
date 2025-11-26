@@ -1,0 +1,28 @@
+blueprint:
+  name: ReCamera Detection Webhook
+  description: Receive detection results from ReCamera and store the raw payload in an input_text entity.
+  domain: automation
+  input:
+    webhook_id:
+      name: Webhook ID
+      description: The webhook ID used by ReCamera
+      default: recamera_detection
+    target_input_text:
+      name: Target input_text entity
+      description: Entity that will store the raw detection payload
+      selector:
+        entity:
+          domain: input_text
+
+trigger:
+  - platform: webhook
+    webhook_id: !input webhook_id
+
+action:
+  - service: input_text.set_value
+    target:
+      entity_id: !input target_input_text
+    data:
+      value: "{{ trigger.json.payload }}"
+
+mode: single
