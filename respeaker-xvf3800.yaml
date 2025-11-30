@@ -103,7 +103,7 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "O2aRAd1A5S8Wa4YEI9jgN/rJjBIafvxfHX2NIS4vtOY="
+    key: "your_key"
   id: api_id
   actions:
     - action: set_led_color
@@ -156,7 +156,7 @@ api:
 
 ota:
   - platform: esphome
-    password: "96d17784176918b75633995719ed957d"
+    password: "your_password"
 
 wifi:
   id: wifi_id
@@ -166,7 +166,7 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Xvf3800 Fallback Hotspot"
-    password: "v2NFa73mX6OG"
+    password: "your_password"
 
 captive_portal:
 
