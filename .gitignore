@@ -1,0 +1,10 @@
+.spec-workflow
+/*/.spec-workflow
+.claude/
+/*/.claude/
+__pycache__
+/*/__pycache__
+.playwright-mcp
+/*/.playwright-mcp
+.serena
+/*/.serena

@@ -30,7 +30,7 @@ substitutions:
 esphome:
   name: respeaker-xvf3800-assistant
   friendly_name: reSpeaker XVF3800 Assistant
-  project: 
+  project:
     name: formatbce.Respeaker XVF3800 Satellite
     version: 2025.9.0
   min_version: 2025.9.0
@@ -103,7 +103,7 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "your_key"
+    key: "O2aRAd1A5S8Wa4YEI9jgN/rJjBIafvxfHX2NIS4vtOY="
   id: api_id
   actions:
     - action: set_led_color
@@ -156,7 +156,7 @@ api:
 
 ota:
   - platform: esphome
-    password: "your_password"
+    password: "96d17784176918b75633995719ed957d"
 
 wifi:
   id: wifi_id
@@ -166,7 +166,7 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Xvf3800 Fallback Hotspot"
-    password: "your_password"
+    password: "v2NFa73mX6OG"
 
 captive_portal:
 
@@ -367,6 +367,18 @@ number:
     step: 0.05
     initial_value: 0.8
     mode: slider
+  - platform: template
+    id: doa_sensitivity
+    name: "DOA Sensitivity"
+    icon: mdi:antenna
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 10
+    step: 1
+    initial_value: 3
+    mode: slider
 
 sensor:
   - platform: template
@@ -378,6 +390,21 @@ sensor:
     unit_of_measurement: s
     icon: "mdi:timer"
     accuracy_decimals: 0
+  - platform: template
+    id: doa_angle
+    name: "DOA Angle"
+    unit_of_measurement: "°"
+    icon: "mdi:compass"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if (id(beam_direction).has_state()) {
+        int led_position = ((int)id(beam_direction).state + 6) % 12;
+        float angle = led_position * 30.0f;
+        return angle;
+      } else {
+        return 0.0f;
+      }
 
 text_sensor:
   - platform: template
@@ -700,64 +727,63 @@ script:
     then:
       - lambda: |-
           constexpr int NUM_LEDS = 12;
-          constexpr int FADE_LEDS = 3;
-          constexpr float TRANSITION_DURATION = 0.5f; // Duration of the smooth transition
+          constexpr float TRANSITION_DURATION = 0.2f; // Duration of the smooth transition
           uint32_t colors[NUM_LEDS] = {0};
 
           uint32_t now = millis();
           float dt = (now - id(last_led_update_time)) / 1000.0f;
           id(last_led_update_time) = now;
 
+          float current_pos = id(animated_beam_position); // Initialize with current position
+
           if (id(beam_direction).has_state()) {
-            // CORRECTING THE OFFSET: add 5 from the sensor reading
-            float target_pos = ((int)id(beam_direction).state + 5) % NUM_LEDS;
-            float current_pos = id(animated_beam_position);
+            // Add 180 degree correction (6 LEDs) to flip the direction
+            float target_pos = ((int)id(beam_direction).state + 6) % NUM_LEDS;
 
-            // Calculate the shortest path around the circle
-            float diff = target_pos - current_pos;
-            if (diff > NUM_LEDS / 2.0f) {
-              diff -= NUM_LEDS;
-            } else if (diff < -NUM_LEDS / 2.0f) {
-              diff += NUM_LEDS;
-            }
-
-            // Move current position towards target
-            if (abs(diff) > 0.01f) {
-              float move_speed = diff / TRANSITION_DURATION;
-              current_pos += move_speed * dt;
-            } else {
+            // For idle mode, immediately update to current position for real-time response
+            if (id(current_led_effect) == "led_beam") {
+              // Immediate update for DOA indicator in idle mode
               current_pos = target_pos;
-            }
+            } else {
+              // Smooth transition for voice assistant modes
+              // Calculate the shortest path around the circle
+              float diff = target_pos - current_pos;
+              if (diff > NUM_LEDS / 2.0f) {
+                diff -= NUM_LEDS;
+              } else if (diff < -NUM_LEDS / 2.0f) {
+                diff += NUM_LEDS;
+              }
 
-            // Handle wrap-around for the animated position
-            if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
-            if (current_pos < 0.0f) current_pos += NUM_LEDS;
+              // Move current position towards target
+              if (abs(diff) > 0.01f) {
+                float move_speed = diff / TRANSITION_DURATION;
+                current_pos += move_speed * dt;
+              } else {
+                current_pos = target_pos;
+              }
+
+              // Handle wrap-around for the animated position
+              if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
+              if (current_pos < 0.0f) current_pos += NUM_LEDS;
+            }
 
             id(animated_beam_position) = current_pos;
-
-            // Render the smoothed beam
-            float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
-           
-            for (int i = 0; i < NUM_LEDS; i++) {
-              // Calculate circular distance from current LED to the animated position
-              float dist = abs(i - current_pos);
-              if (dist > NUM_LEDS / 2.0f) {
-                dist = NUM_LEDS - dist;
-              }
-
-              // Calculate brightness based on distance (linear falloff)
-              float brightness_factor = 1.0f - (dist / (FADE_LEDS + 1.0f));
-              brightness_factor = std::max(0.0f, brightness_factor);
-
-              if (brightness_factor > 0.0f) {
-                float final_brightness = brightness_factor * master_brightness;
-                uint8_t r = (uint8_t)(id(effect_color_r) * final_brightness);
-                uint8_t g = (uint8_t)(id(effect_color_g) * final_brightness);
-                uint8_t b = (uint8_t)(id(effect_color_b) * final_brightness);
-                colors[i] = (r << 16) | (g << 8) | b;
-              }
-            }
           }
+
+          // Clear all LEDs first
+          for (int i = 0; i < NUM_LEDS; i++) {
+            colors[i] = 0;
+          }
+
+          // Set only the nearest LED with original color
+          float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
+          int nearest_led = (int)round(current_pos) % NUM_LEDS;
+
+          // Bright indicator with original user-defined color
+          uint8_t r = (uint8_t)(id(effect_color_r) * master_brightness * 255.0f);
+          uint8_t g = (uint8_t)(id(effect_color_g) * master_brightness * 255.0f);
+          uint8_t b = (uint8_t)(id(effect_color_b) * master_brightness * 255.0f);
+          colors[nearest_led] = (r << 16) | (g << 8) | b;
           id(respeaker).set_led_ring(colors);
           
   # Master script controlling the LEDs, based on different conditions : initialization in progress, wifi and api connected and voice assistant phase.
@@ -910,7 +936,8 @@ script:
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
       - lambda: |
-          id(animated_beam_position) = id(beam_direction).state;
+          // Apply 180 degree correction (6 LEDs) to flip the direction
+          id(animated_beam_position) = ((int)id(beam_direction).state + 6) % 12;
       - script.execute:
           id: led_set_effect
           effect: "led_beam"
@@ -1017,14 +1044,20 @@ script:
   # Script executed when the voice assistant is idle (waiting for a wake word)
   - id: control_leds_voice_assistant_idle_phase
     then:
+      - lambda: |
+          // Initialize animated position when starting idle phase
+          if (id(beam_direction).has_state()) {
+            // Apply 180 degree correction (6 LEDs) to flip the direction
+            id(animated_beam_position) = ((int)id(beam_direction).state + 6) % 12;
+          }
       - script.execute:
           id: led_set_effect
-          effect: "off"
-          r: 0.0
-          g: 0.0
-          b: 0.0
+          effect: "led_beam"
+          r: !lambda return id(user_led_ring_color_r);
+          g: !lambda return id(user_led_ring_color_g);
+          b: !lambda return id(user_led_ring_color_b);
           speed: 0.0
-          brightness: 0.0
+          brightness: 0.4
 
   # Script executed when the timer is ringing, to playback sounds.
   - id: ring_timer
@@ -1156,7 +1189,7 @@ script:
               // Trigger action if current time matches alarm time
               auto time_now = id(homeassistant_time).now();
               if (time_now.hour == alarm_hour && time_now.minute == alarm_minute) {
-                auto action = id(alarm_action).state;
+                auto action = id(alarm_action).current_option();
                 if (action == "Play sound") {
                   id(timer_ringing).turn_on();
                 } else if (action == "Send event") {
