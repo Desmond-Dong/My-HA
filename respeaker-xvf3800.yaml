@@ -56,12 +56,6 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
-            id(alarm_time).publish_state(id(saved_alarm_time));
-        - lambda: |-
-            auto call = id(alarm_action).make_call();
-            call.set_option(id(saved_alarm_action));
-            call.perform();
-        - lambda: |-
             setenv("TZ", id(saved_time_zone).c_str(), 1);
             tzset();
 
@@ -128,26 +122,6 @@ api:
     - action: stop_va
       then:
         - voice_assistant.stop
-    - action: set_alarm_time
-      variables:
-        alarm_time_hh_mm: string
-      then:
-        - lambda: |-
-            if (alarm_time_hh_mm.length() == 5 &&
-              isdigit(alarm_time_hh_mm[0]) && isdigit(alarm_time_hh_mm[1]) &&
-              isdigit(alarm_time_hh_mm[3]) && isdigit(alarm_time_hh_mm[4])) {
-                id(alarm_time).publish_state(alarm_time_hh_mm);
-                id(saved_alarm_time) = alarm_time_hh_mm;
-              }
-    - action: set_time_zone
-      variables:
-        posix_time_zone: string
-      then:
-        - lambda: |-
-            setenv("TZ", posix_time_zone.c_str(), 1);
-            tzset();
-            id(saved_time_zone) = posix_time_zone;
-            id(publish_current_time).execute();
   on_client_connected:
     - script.execute: control_leds
   on_client_disconnected:
@@ -252,18 +226,11 @@ globals:
     type: int
     restore_value: no
     initial_value: ${voice_assist_not_ready_phase_id}
-  - id: saved_alarm_time
-    type: std::string
-    restore_value: yes
-    initial_value: '"Unknown"'
+  # Global variable for time zone
   - id: saved_time_zone
     type: std::string
     restore_value: yes
     initial_value: '"UTC0"'
-  - id: saved_alarm_action
-    type: std::string
-    restore_value: yes
-    initial_value: '"Play sound"'
   # Global variable storing the first active timer
   - id: first_active_timer
     type: voice_assistant::Timer
@@ -299,14 +266,6 @@ globals:
     type: int
     restore_value: no
     initial_value: '-1'
-  - id: doa_stability_counter
-    type: int
-    restore_value: no
-    initial_value: '0'
-  - id: last_doa_change_time
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
   - id: doa_first_detection_time
     type: uint32_t
     restore_value: no
@@ -324,15 +283,9 @@ globals:
 time:
   - platform: homeassistant
     id: homeassistant_time
-    on_time:
-      # Every 1 minute
-      - seconds: 0
-        minutes: /1
-        then:
-          - script.execute: check_alarm
     on_time_sync:
       - script.execute: publish_current_time
-          
+
 switch:
   # Mute Sound Switch.
   - platform: template
@@ -391,17 +344,6 @@ switch:
       # If 15 minutes have passed and the timer is still ringing, stop it.
       - delay: 15min
       - switch.turn_off: timer_ringing
-  # Defines if alarm is active
-  - platform: template
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    id: alarm_on
-    icon: mdi:bell-badge
-    name: "Alarm on"
-    on_turn_on:
-      - script.execute: control_leds
-    on_turn_off:
-      - script.execute: control_leds
 
 binary_sensor:
 
@@ -525,14 +467,6 @@ text_sensor:
     name: "Next timer name"
     icon: "mdi:timer"
     disabled_by_default: true
-  - platform: template
-    name: "Alarm time"
-    id: alarm_time
-    icon: mdi:bell-ring
-  - platform: template
-    name: "Current device time"
-    id: current_time
-    icon: mdi:clock
   # WiFi IP 地址文本传感器
   - platform: template
     name: "WiFi IP"
@@ -876,8 +810,6 @@ script:
           uint32_t colors[NUM_LEDS] = {0};
 
           uint32_t now = millis();
-          float dt = (now - id(last_led_update_time)) / 1000.0f;
-          id(last_led_update_time) = now;
 
           float current_pos = id(animated_beam_position); // Initialize with current position
 
@@ -887,15 +819,12 @@ script:
 
             // DOA stability filtering logic - 基于持续时间的确认机制
             bool position_changed = false;
-            bool use_pending_position = false;
 
             if (id(last_stable_doa_position) == -1) {
               // 首次读取，初始化并立即显示
               id(last_stable_doa_position) = new_doa_position;
               id(pending_doa_position) = new_doa_position;
               id(doa_first_detection_time) = now;
-              id(doa_stability_counter) = 1;
-              id(last_doa_change_time) = now;
               position_changed = true;
             } else if (new_doa_position == id(pending_doa_position)) {
               // 新位置持续保持，检查是否达到持续时间要求
@@ -903,39 +832,12 @@ script:
               if (duration_ms >= id(doa_stable_duration_required)) {
                 // 达到稳定性要求，更新LED
                 id(last_stable_doa_position) = new_doa_position;
-                id(doa_stability_counter) = threshold;
-                id(last_doa_change_time) = now;
                 position_changed = true;
               }
-              // 如果尚未达到持续时间，继续使用原位置显示
-              use_pending_position = true;
             } else {
               // 检测到新的不同位置，开始新的稳定性计时
-              if (new_doa_position != id(pending_doa_position)) {
-                id(pending_doa_position) = new_doa_position;
-                id(doa_first_detection_time) = now;
-                use_pending_position = true;
-              }
-            }
-
-            // 对于低阈值（1-2），允许更快响应
-            if (threshold <= 2 && new_doa_position != id(last_stable_doa_position)) {
-              uint32_t duration_ms = now - id(doa_first_detection_time);
-              if (duration_ms >= 300) { // 低灵敏度时至少300ms
-                position_changed = true;
-                id(last_stable_doa_position) = new_doa_position;
-                id(last_doa_change_time) = now;
-              }
-              use_pending_position = false;
-            }
-
-            // 强制更新：如果长时间未更新（避免卡住）
-            if ((now - id(last_doa_change_time)) > 3000) {
-              position_changed = true;
-              id(last_stable_doa_position) = new_doa_position;
               id(pending_doa_position) = new_doa_position;
               id(doa_first_detection_time) = now;
-              id(last_doa_change_time) = now;
             }
 
             if (position_changed) {
@@ -957,9 +859,10 @@ script:
                 }
 
                 // 向目标位置移动
+                // 使用固定的较小时间步长代替 dt
+                float move_step = diff * 0.3f; // 30% 的距离每 100ms
                 if (abs(diff) > 0.01f) {
-                  float move_speed = diff / TRANSITION_DURATION;
-                  current_pos += move_speed * dt;
+                  current_pos += move_step;
                 } else {
                   current_pos = target_pos;
                 }
@@ -1369,41 +1272,6 @@ script:
                 then:
                   - micro_wake_word.disable_model: stop
 
-  - id: check_alarm
-    then:
-      - lambda: |-
-          id(publish_current_time).execute();
-          // Check alarm
-          if (id(alarm_on).state && id(alarm_time).has_state()) {
-            // Get the stored alarm time from the sensor
-            auto set_alarm_time = id(alarm_time).state;
-            if (set_alarm_time.length() == 5 &&
-              isdigit(set_alarm_time[0]) && isdigit(set_alarm_time[1]) &&
-              isdigit(set_alarm_time[3]) && isdigit(set_alarm_time[4])) {
-              auto alarm_hour = std::stoi(set_alarm_time.substr(0, 2));
-              auto alarm_minute = std::stoi(set_alarm_time.substr(3, 2));
-
-              // Trigger action if current time matches alarm time
-              auto time_now = id(homeassistant_time).now();
-              if (time_now.hour == alarm_hour && time_now.minute == alarm_minute) {
-                auto action = id(alarm_action).current_option();
-                if (action == "Play sound") {
-                  id(timer_ringing).turn_on();
-                } else if (action == "Send event") {
-                  id(send_alarm_event).execute();
-                } else if (action == "Sound and event") {
-                  id(timer_ringing).turn_on();
-                  id(send_alarm_event).execute();
-                } 
-              }
-            } else {
-              ESP_LOGW("alarm", "Incorrect alarm time setting");
-            }
-          }
-  - id: send_alarm_event
-    then:
-      - homeassistant.event:
-          event: esphome.alarm_ringing
   - id: send_tts_uri_event
     parameters:
       tts_uri: string
@@ -1427,10 +1295,9 @@ script:
           static std::string last_time_string = "";
           auto time_now = id(homeassistant_time).now();
           std::string current_time_string = time_now.strftime("%H:%M");
-          
+
           // Only publish if time actually changed
           if (current_time_string != last_time_string) {
-            id(current_time).publish_state(current_time_string);
             last_time_string = current_time_string;
           }
 
@@ -1795,20 +1662,6 @@ select:
     id: logger_select
     name: Logger Level
     disabled_by_default: true
-  - platform: template
-    optimistic: true
-    name: "Alarm action"
-    id: alarm_action
-    icon: mdi:bell-plus
-    options:
-      - "Play sound"
-      - "Send event"
-      - "Sound and event"
-    initial_option: "Play sound"
-    on_value:
-      then:
-        - lambda: |-
-            id(saved_alarm_action) = x;
   - platform: template
     name: "LED Ring Color Preset"
     id: user_led_color_preset
