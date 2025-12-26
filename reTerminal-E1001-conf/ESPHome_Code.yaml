@@ -4,7 +4,8 @@ esphome:
   on_boot:
     priority: 600
     then:
-      - delay: 20s
+      - output.turn_on: mic_enable
+      - delay: 30s
       - component.update: dashboard_image
  #     - output.turn_on: bsp_sd_enable
       - output.turn_on: bsp_battery_enable
@@ -12,28 +13,14 @@ esphome:
       - component.update: battery_voltage
       - component.update: battery_level
 
+  project:
+    name: francescopace.espectre
+    version: "2.2.0"
 esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
     #type: arduino
-    sdkconfig_options:
-      # Power Management (critical for CSI reliability)
-      CONFIG_PM_ENABLE: n                             # Disable all power management
-      CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_ENABLE: n   # No power save when disconnected
-      # CSI Feature
-      CONFIG_ESP_WIFI_CSI_ENABLED: y                  # Enable CSI extraction from WiFi packets
-      # PSRAM Support
-      CONFIG_SPIRAM: y                                # Enable SPIRAM/PSRAM
-      CONFIG_SPIRAM_IGNORE_NOTFOUND: y                # Continue if PSRAM not found (for compatibility)
-      CONFIG_SPIRAM_TYPE_AUTO: y                      # Automatic detection of PSRAM type
-      CONFIG_SPIRAM_SPEED_80M: y                      # 80MHz PSRAM clock
-      CONFIG_SPIRAM_BOOT_INIT: y                      # Initialize at boot
-      CONFIG_SPIRAM_USE_MALLOC: y                     # Use PSRAM for malloc/heap
-      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "8192"     # Small allocations (<8KB) use internal RAM
-      CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "32768"  # Reserve 32KB internal for DMA
-      CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY: y    # Required for some operations
-      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: n         # Disable WiFi allocation from PSRAM
 # Enable logging
 logger:
 #  level: VERY_VERBOSE
@@ -103,15 +90,19 @@ external_components:
   - source:
       type: git
       url: https://github.com/francescopace/espectre
-      path: components
+      ref: main
     components: [ espectre ]
-
-# ESPectre - WiFi CSI Motion Detection
+    refresh: always
+#  - source:
+#      type: local
+#      path: "components"
 espectre:
-  traffic_generator_rate: 10   # DNS queries/sec to gateway to generate CSI data (default 100)
-  segmentation_threshold: 0.5   # Motion detection sensitivity: lower=more sensitive (0.5-10.0, default 1.0)
-  segmentation_window_size: 100  # Analysis window: larger=fewer false positives but slower reaction (10-200, default 50)
-  hampel_enabled: false          # Anti-turbulence filter: removes spikes from air currents/fans (default true)
+  id: espectre_csi
+
+
+dashboard_import:
+  package_import_url: github://francescopace/espectre/examples/espectre-s3.yaml@main
+  import_full_config: true
 
 # BLE Proxy
 esp32_ble_tracker:
@@ -139,10 +130,23 @@ microphone:
     i2s_din_pin: GPIO41
     adc_type: external
     pdm: true
+    use_apll: true
+    channel: left
+    on_data:
+      - lambda: |-
+          int32_t sum = 0;
+          for (auto v : x) {
+            sum += abs(v);
+          }
+          ESP_LOGW("MIC", "Energy=%ld", sum / (x.size() ? x.size() : 1));
 
 # Configuration for the Voice Assistant
 voice_assistant:
   microphone: echo_microphone
+  use_wake_word: false
+  noise_suppression_level: 0
+  conversation_timeout: 300s
+  volume_multiplier: 1.0
 
 
 
@@ -174,8 +178,11 @@ switch:
     name: "Refresh"
     id: refresh_display
     turn_on_action:
-      - component.update: dashboard_image
-      - delay: 200ms                   # 等待下载触发
+      - lambda: |-
+          id(dashboard_image).set_url(id(custom_url_input).state);
+          id(dashboard_image).update();
+          
+      - delay: 500ms
       - switch.turn_off: refresh_display
 #  - platform: template
 #    name: "Force Deep Sleep"
@@ -186,11 +193,8 @@ switch:
 #      - deep_sleep.enter:
 #          id: deep_sleep_1
 #          sleep_duration: !lambda 'return (id(sleep_minutes) * 60000);'
-  - platform: gpio
-    pin: GPIO38
-    id: mic_power
-    name: mic_power
-    restore_mode: ALWAYS_ON
+
+            
 sensor:
   - platform: sht4x
     temperature:
@@ -244,7 +248,16 @@ sensor:
       name: "Max Free Block"
     loop_time:
       name: "Loop Time"
-
+text:
+  - platform: template
+    name: "Custom Image URL"
+    id: custom_url_input
+    mode: TEXT
+    # 这里你可以填入你想给第二页预设的默认地址
+    initial_value: "http://172.16.1.119:10000/lovelace/4?viewport=800x480&eink=2&format=bmp&lang=zh-cn"
+    optimistic: true
+    restore_value: true
+    max_length: 255
 text_sensor:
   - platform: debug
     device:
@@ -268,6 +281,10 @@ output:
     # The frequency determines the pitch of the buzzer's sound. 1000Hz is a mid-range tone.
     frequency: 1000Hz
 
+  - platform: gpio
+    pin: GPIO38
+    id: mic_enable
+
 
 binary_sensor:
   - platform: gpio    # Next page
@@ -284,11 +301,16 @@ binary_sensor:
       inverted: true
     id: key2
     name: "Key2"
+    filters:
+      - delayed_on: 30ms
+      - delayed_off: 30ms
     on_press:
-      - voice_assistant.start
+      - voice_assistant.start:
+
     on_release:
-      - voice_assistant.stop
-  - platform: gpio     # Prev page
+      - voice_assistant.stop:
+
+  - platform: gpio     # Key3 物理刷新按键
     pin:
       number: GPIO5
       mode: INPUT_PULLUP
@@ -296,7 +318,10 @@ binary_sensor:
     id: key3
     name: "Key3"
     on_press:
-      - component.update: dashboard_image
+      - lambda: |-
+          id(dashboard_image).set_url(id(custom_url_input).state);
+          id(dashboard_image).update();
+          
 
   # - platform: gpio
   #   pin:
@@ -344,25 +369,26 @@ http_request:
   timeout: 10s
   watchdog_timeout: 15s
 
-time:
-  - platform: sntp
-    id: sntp_time
-    timezone: Asia/Shanghai
-    on_time:
-      # 每个整点触发
-      - seconds: 0
-        minutes: 0
-        then:
-          - if:
-              condition:
-                # 判断小时数不是 1~6
-                lambda: |-
-                  auto now = id(sntp_time).now();
-                  return !(now.hour >= 1 && now.hour < 6);
-              then:
-                # 仅非 1~6 点执行更新
-                - component.update: dashboard_image
+#time:
+#  - platform: sntp
+#    id: sntp_time
+#    timezone: Asia/Shanghai
+#    on_time:
+#      # 每个整点触发
+#      - seconds: 0
+#        minutes: 0
+#        then:
+#          - if:
+#              condition:
+#                # 判断小时数不是 1~6
+#                lambda: |-
+#                  auto now = id(sntp_time).now();
+#                  return !(now.hour >= 1 && now.hour < 6);
+#              then:
+#                # 仅非 1~6 点执行更新
+#                - component.update: dashboard_image
 # 在线图片获取
+
 online_image:
   - id: dashboard_image
     format: BMP
