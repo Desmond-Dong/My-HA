@@ -15,7 +15,7 @@ substitutions:
   # The voice assistant encountered an error
   voice_assist_error_phase_id: '11'
   # Change this to true in case you ahve a hidden SSID at home.
-  #hidden_ssid: "false"
+  hidden_ssid: "false"
 
    # Substitutions for audio files
   mute_switch_on_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_on.flac
@@ -26,14 +26,18 @@ substitutions:
   center_button_double_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_double_press.flac
   center_button_triple_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_triple_press.flac
   center_button_long_press_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/center_button_long_press.flac
+  factory_reset_initiated_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_initiated.mp3
+  factory_reset_cancelled_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_cancelled.mp3
+  factory_reset_confirmed_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/factory_reset_confirmed.mp3
+  error_cloud_expired_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/error_cloud_expired.mp3
 
 esphome:
   name: respeaker-xvf3800-assistant
   friendly_name: reSpeaker XVF3800 Assistant
   project:
     name: formatbce.Respeaker XVF3800 Satellite
-    version: 2025.9.0
-  min_version: 2025.9.0
+    version: 2025.12.1
+  min_version: 2025.12.0
   on_boot:
     - priority: 375
       then:
@@ -66,7 +70,7 @@ esp32:
   flash_size: 8MB
   framework:
     type: esp-idf
-    version: recommended
+    version: 5.5.1
     sdkconfig_options:
       CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
@@ -137,8 +141,17 @@ ota:
 
 wifi:
   id: wifi_id
+  fast_connect: ${hidden_ssid}
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # Add power management and connection optimizations
+  power_save_mode: none # Disable power saving for better performance
+  reboot_timeout: 10min # Prevent unnecessary reboots
+  on_connect:
+    - lambda: id(improv_ble_in_progress) = false;
+    - script.execute: control_leds
+  on_disconnect:
+    - script.execute: control_leds
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
@@ -157,29 +170,9 @@ i2c:
 psram:
   mode: octal
   speed: 80MHz
+  ignore_not_found: false # The VPE has PSRAM, so this is safe. Allows configuring WiFi driver to use more resources (done automatically by the speaker media player)
 
 globals:
-  # 音频文件URL全局变量
-  - id: mute_switch_on_sound
-    type: std::string
-    restore_value: no
-    initial_value: '"https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_on.flac"'
-  - id: mute_switch_off_sound
-    type: std::string
-    restore_value: no
-    initial_value: '"https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_off.flac"'
-  - id: timer_finished_sound
-    type: std::string
-    restore_value: no
-    initial_value: '"https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac"'
-  - id: wake_word_triggered_sound
-    type: std::string
-    restore_value: no
-    initial_value: '"https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac"'
-  - id: error_cloud_expired
-    type: std::string
-    restore_value: no
-    initial_value: '"https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/error_cloud_expired.mp3"'
   - id: user_led_ring_color_r
     type: float
     restore_value: yes
@@ -230,7 +223,7 @@ globals:
   - id: saved_time_zone
     type: std::string
     restore_value: yes
-    initial_value: '"UTC0"'
+    initial_value: '"CST-8"'
   # Global variable storing the first active timer
   - id: first_active_timer
     type: voice_assistant::Timer
@@ -501,7 +494,7 @@ text_sensor:
       }
 
 interval:
-  - interval: 100ms
+  - interval: 50ms
     id: led_animation_interval
     then:
       - lambda: |-
@@ -806,18 +799,22 @@ script:
     then:
       - lambda: |-
           constexpr int NUM_LEDS = 12;
-          constexpr float TRANSITION_DURATION = 0.2f; // Duration of the smooth transition
+          constexpr int FADE_LEDS = 3;
+          constexpr float TRANSITION_DURATION = 0.5f; // Duration of the smooth transition
           uint32_t colors[NUM_LEDS] = {0};
 
           uint32_t now = millis();
+          float dt = (now - id(last_led_update_time)) / 1000.0f;
+          id(last_led_update_time) = now;
 
-          float current_pos = id(animated_beam_position); // Initialize with current position
+          // Initialize current_pos from animated position
+          float current_pos = id(animated_beam_position);
 
           if (id(beam_direction).has_state()) {
+            // DOA stability filtering logic - 基于持续时间的确认机制
             int new_doa_position = (int)id(beam_direction).state;
             int threshold = (int)id(doa_sensitivity).state;
 
-            // DOA stability filtering logic - 基于持续时间的确认机制
             bool position_changed = false;
 
             if (id(last_stable_doa_position) == -1) {
@@ -841,55 +838,54 @@ script:
             }
 
             if (position_changed) {
-              // 位置确认改变，添加180度校正（6个LED）翻转方向
-              float target_pos = (id(last_stable_doa_position) + 6) % NUM_LEDS;
+              // No offset correction - use raw sensor value
+              float target_pos = ((int)id(beam_direction).state + 5) % NUM_LEDS;
 
-              // 对于空闲模式，立即更新到当前位置以实现实时响应
-              if (id(current_led_effect) == "led_beam") {
-                // 空闲模式下DOA指示器立即更新
-                current_pos = target_pos;
-              } else {
-                // 语音助手模式的平滑过渡
-                // 计算围绕圆周的最短路径
-                float diff = target_pos - current_pos;
-                if (diff > NUM_LEDS / 2.0f) {
-                  diff -= NUM_LEDS;
-                } else if (diff < -NUM_LEDS / 2.0f) {
-                  diff += NUM_LEDS;
-                }
-
-                // 向目标位置移动
-                // 使用固定的较小时间步长代替 dt
-                float move_step = diff * 0.3f; // 30% 的距离每 100ms
-                if (abs(diff) > 0.01f) {
-                  current_pos += move_step;
-                } else {
-                  current_pos = target_pos;
-                }
-
-                // 处理动画位置的环绕
-                if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
-                if (current_pos < 0.0f) current_pos += NUM_LEDS;
+              // Calculate the shortest path around the circle
+              float diff = target_pos - current_pos;
+              if (diff > NUM_LEDS / 2.0f) {
+                diff -= NUM_LEDS;
+              } else if (diff < -NUM_LEDS / 2.0f) {
+                diff += NUM_LEDS;
               }
+
+              // Move current position towards target
+              if (abs(diff) > 0.01f) {
+                float move_speed = diff / TRANSITION_DURATION;
+                current_pos += move_speed * dt;
+              } else {
+                current_pos = target_pos;
+              }
+
+              // Handle wrap-around for the animated position
+              if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
+              if (current_pos < 0.0f) current_pos += NUM_LEDS;
 
               id(animated_beam_position) = current_pos;
             }
           }
 
-          // 首先清除所有LED
-          for (int i = 0; i < NUM_LEDS; i++) {
-            colors[i] = 0;
-          }
-
-          // 仅设置最近的LED，使用原始颜色
+          // Render the smoothed beam with 3 LED fade effect
           float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
-          int nearest_led = (int)round(current_pos) % NUM_LEDS;
+          for (int i = 0; i < NUM_LEDS; i++) {
+            // Calculate circular distance from current LED to the animated position
+            float dist = abs(i - current_pos);
+            if (dist > NUM_LEDS / 2.0f) {
+              dist = NUM_LEDS - dist;
+            }
 
-          // 使用用户定义的原始颜色的明亮指示器
-          uint8_t r = (uint8_t)(id(effect_color_r) * master_brightness * 255.0f);
-          uint8_t g = (uint8_t)(id(effect_color_g) * master_brightness * 255.0f);
-          uint8_t b = (uint8_t)(id(effect_color_b) * master_brightness * 255.0f);
-          colors[nearest_led] = (r << 16) | (g << 8) | b;
+            // Calculate brightness based on distance (linear falloff)
+            float brightness_factor = 1.0f - (dist / (FADE_LEDS + 1.0f));
+            brightness_factor = std::max(0.0f, brightness_factor);
+
+            if (brightness_factor > 0.0f) {
+              float final_brightness = brightness_factor * master_brightness;
+              uint8_t r = (uint8_t)(id(effect_color_r) * final_brightness);
+              uint8_t g = (uint8_t)(id(effect_color_g) * final_brightness);
+              uint8_t b = (uint8_t)(id(effect_color_b) * final_brightness);
+              colors[i] = (r << 16) | (g << 8) | b;
+            }
+          }
           id(respeaker).set_led_ring(colors);
           
   # Master script controlling the LEDs, based on different conditions : initialization in progress, wifi and api connected and voice assistant phase.
@@ -1042,8 +1038,10 @@ script:
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
       - lambda: |
-          // Apply 180 degree correction (6 LEDs) to flip the direction
-          id(animated_beam_position) = ((int)id(beam_direction).state + 6) % 12;
+          // Initialize animated position when starting waiting phase
+          if (id(beam_direction).has_state()) {
+            id(animated_beam_position) = id(beam_direction).state;
+          }
       - script.execute:
           id: led_set_effect
           effect: "led_beam"
@@ -1153,8 +1151,7 @@ script:
       - lambda: |
           // Initialize animated position when starting idle phase
           if (id(beam_direction).has_state()) {
-            // Apply 180 degree correction (6 LEDs) to flip the direction
-            id(animated_beam_position) = ((int)id(beam_direction).state + 6) % 12;
+            id(animated_beam_position) = id(beam_direction).state;
           }
       - script.execute:
           id: led_set_effect
@@ -1172,43 +1169,48 @@ script:
       - script.execute:
           id: play_sound
           priority: true
-          sound_file: !lambda return id(timer_finished_sound);
+          sound_file: "timer_finished_sound"
 
   # Script executed when the timer is ringing, to repeat the timer finished sound.
   - id: enable_repeat_one
     then:
-      # Turn on the repeat mode
+      # Turn on the repeat mode and pause for 500 ms between playlist items/repeats
       - media_player.repeat_one:
           id: external_media_player
           announcement: true
-
+      - lambda: |-
+          id(external_media_player)->set_playlist_delay_ms(1, 500);
   # Script execute when the timer is done ringing, to disable repeat mode.
   - id: disable_repeat
     then:
-      # Turn off the repeat mode
+      # Turn off the repeat mode and pause for 0 ms between playlist items/repeats
       - media_player.repeat_off:
           id: external_media_player
           announcement: true
+      - lambda: |-
+          id(external_media_player)->set_playlist_delay_ms(1, 0);
 
   # Script executed when we want to play sounds on the device.
   - id: play_sound
     parameters:
       priority: bool
-      sound_file: std::string
+      sound_file: string
     then:
+      - if:
+          condition:
+            lambda: return priority;
+          then:
+            - media_player.stop:
+                id: external_media_player
+                announcement: true
       - lambda: |-
-          if (priority) {
+          if ( (id(external_media_player).state != media_player::MediaPlayerState::MEDIA_PLAYER_STATE_ANNOUNCING ) || priority) {
             id(external_media_player)
               ->make_call()
-              .set_command(media_player::MediaPlayerCommand::MEDIA_PLAYER_COMMAND_STOP)
+              .set_media_url("file://" + sound_file)
+              .set_announcement(true)
               .perform();
           }
-          // 使用 media_url 播放HTTP音频文件
-          id(external_media_player)
-            ->make_call()
-            .set_media_url(sound_file)
-            .set_announcement(true)
-            .perform();
 
   # Script used to fetch the first active timer (Stored in global first_active_timer)
   - id: fetch_first_active_timer
@@ -1330,7 +1332,7 @@ microphone:
     i2s_din_pin: GPIO43
     adc_type: external
     pdm: false
-    sample_rate: 16000
+    sample_rate: 48000
     bits_per_sample: 32bit
     i2s_mode: secondary
     i2s_audio_id: i2s_input
@@ -1356,6 +1358,7 @@ speaker:
     id: mixing_speaker
     output_speaker: i2s_audio_speaker
     num_channels: 2
+    task_stack_in_psram: true
     source_speakers:
       - id: announcement_mixing_input
         timeout: never
@@ -1393,6 +1396,17 @@ media_source:
     buffer_size: 500000
   - platform: file
     id: file_source
+    files:
+      - id: mute_switch_on_sound
+        file: ${mute_switch_on_sound_file}
+      - id: mute_switch_off_sound
+        file: ${mute_switch_off_sound_file}
+      - id: timer_finished_sound
+        file: ${timer_finished_sound_file}
+      - id: wake_word_triggered_sound
+        file: ${wake_word_triggered_sound_file}
+      - id: error_cloud_expired
+        file: ${error_cloud_expired_sound_file}
 
 media_player:
   # SendSpin 群组播放器 - 用于控制其他 Home Assistant 媒体播放器
@@ -1531,7 +1545,7 @@ respeaker_xvf3800:
             - script.execute:
                 id: play_sound
                 priority: false
-                sound_file: !lambda return id(mute_switch_on_sound);
+                sound_file: "mute_switch_on_sound"
     on_turn_off:
       - if:
           condition:
@@ -1542,7 +1556,7 @@ respeaker_xvf3800:
             - script.execute:
                 id: play_sound
                 priority: false
-                sound_file: !lambda return id(mute_switch_off_sound);
+                sound_file: "mute_switch_off_sound"
   dfu_version:
     name: "Firmware Version"
     update_interval: 120s
@@ -1550,10 +1564,10 @@ respeaker_xvf3800:
     name: "Voice Beam Direction"
     id: beam_direction
     internal: true
-#  firmware:
-#    url: https://github.com/formatBCE/Respeaker-XVF3800-ESPHome-integration/raw/refs/heads/main/respeaker_xvf3800_i2s_master_dfu_firmware_v1.0.5_48k.bin
-#    version: "1.0.5"
-#    md5: be440ddef7d34571f01b74513005887f
+  firmware:
+    url: https://github.com/formatBCE/Respeaker-XVF3800-ESPHome-integration/raw/refs/heads/main/application_xvf3800_inthost-lr48-sqr-i2c-v1.0.7-release.bin
+    version: "1.0.7"
+    md5: 043a848f544ff2c7265ac19685daf5de
 
 audio_dac:
   - platform: aic3104
@@ -1623,7 +1637,7 @@ micro_wake_word:
                                   - script.execute:
                                       id: play_sound
                                       priority: true
-                                      sound_file: !lambda return id(wake_word_triggered_sound);
+                                      sound_file: "wake_word_triggered_sound"
                                   - delay: 300ms
                             - voice_assistant.start:
                                 wake_word: !lambda return wake_word;
@@ -1762,7 +1776,7 @@ voice_assistant:
           - script.execute:
               id: play_sound
               priority: true
-              sound_file: !lambda return id(error_cloud_expired);
+              sound_file: "error_cloud_expired"
   # When the voice assistant starts: Play a wake up sound, duck audio.
   on_start:
     - mixer_speaker.apply_ducking:

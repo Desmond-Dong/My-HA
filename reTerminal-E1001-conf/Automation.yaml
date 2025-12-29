@@ -1,19 +1,53 @@
-alias: PC Power On
-description: Powers on the desktop PC when the ReTerminal key is pressed.
+alias: 日历事件提醒
+description: 在待办日历事件开始前15分钟触发。
 triggers:
-  - trigger: state
-    entity_id:
-      - binary_sensor.reterminal_e1001_key1
-    to: "on"
-    for:
-      hours: 0
-      minutes: 0
-      seconds: 3
-conditions: []
+  - entity_id: calendar.todo
+    event: start
+    offset: "-0:15:0"
+    trigger: calendar
+conditions:
+  - condition: and
+    conditions:
+      - condition: template
+        value_template: |
+          {{ not trigger.calendar_event.all_day }}
+      - condition: state
+        entity_id: binary_sensor.desktop
+        state:
+          - "on"
 actions:
-  - action: button.press
+  - action: text.set_value
     metadata: {}
-    data: {}
     target:
-      entity_id: button.desktop
+      entity_id: text.e1001_custom_image_url
+    data:
+      value: >-
+        http://172.16.1.119:10000/lovelace/3?viewport=800x480&eink=2&format=bmp&lang=zh-cn
+  - action: switch.toggle
+    metadata: {}
+    target:
+      entity_id: switch.reterminal_e1001_refresh
+    data: {}
+  - action: light.turn_on
+    data:
+      flash: short
+      brightness_pct: 52
+    metadata: {}
+    target:
+      entity_id: light.reterminal_e1001_buzzer
+  - wait_template: "{{ as_timestamp(now()) >= as_timestamp(trigger.calendar_event.end) }}"
+    continue_on_timeout: true
+    timeout: "30"
+  - action: text.set_value
+    metadata: {}
+    target:
+      entity_id: text.e1001_custom_image_url
+    data:
+      value: >-
+        http://172.16.1.119:10000/lovelace/2?viewport=800x480&eink=2&format=bmp&lang=zh-cn
+  - action: switch.toggle
+    metadata: {}
+    target:
+      entity_id: switch.reterminal_e1001_refresh
+    data: {}
 mode: single
