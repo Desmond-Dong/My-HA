@@ -1,0 +1,246 @@
+# Player Controls Page
+lvgl:
+  pages:
+    - id: player_controls_page
+      bg_color: 0x000000
+      widgets:
+        # Invisible overlay to catch taps and return to sidebar
+        - obj:
+            align: CENTER
+            width: 1280
+            height: 720
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            clickable: true
+            on_click:
+              - lvgl.widget.show: sidebars
+              - script.execute: nav_rail_update
+              - lambda: |-
+                  // Return to the last selected page
+                  switch (id(page_num)) {
+                    case 0:
+                      lv_obj_send_event(id(dash_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    case 1:
+                      lv_obj_send_event(id(light_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    case 2:
+                      lv_obj_send_event(id(climate_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    default:
+                      break;
+                  }
+        - image:
+            id: controls_album_art_widget
+            align: CENTER
+            x: 0
+            y: 0
+            src: fallback_playing_image1
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - obj:
+            align: CENTER
+            x: 0
+            y: 0
+            width: 720
+            height: 720
+            bg_color: 0x000000
+            bg_opa: 58%
+            border_opa: TRANSP
+            radius: 0
+            scrollable: false
+
+        - label:
+            id: controls_title_label
+            align: CENTER
+            x: 0
+            y: -310
+            width: 400
+            text: ""
+            text_color: 0xFFFFFF
+            text_font: font_date
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            hidden: true
+
+        - label:
+            id: controls_artist_label
+            align: CENTER
+            x: 0
+            y: -270
+            width: 400
+            text: ""
+            text_color: 0x66CCFF
+            text_font: font_display
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            hidden: true
+
+        - button:
+            id: controls_mute_button
+            align: BOTTOM_RIGHT
+            x: -30
+            y: -100
+            width: 72
+            height: 72
+            radius: 36
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_mute
+            widgets:
+              - label:
+                  id: controls_mute_icon
+                  align: CENTER
+                  text: "\U000F04C3"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_previous_button
+            align: CENTER
+            x: -104
+            y: 0
+            width: 84
+            height: 84
+            radius: 42
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_previous
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F04AE"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_toggle_button
+            align: CENTER
+            x: 0
+            y: 0
+            width: 104
+            height: 104
+            radius: 52
+            bg_color: 0xFFFF00
+            bg_opa: COVER
+            border_color: 0xFFFFFF
+            border_width: 2
+            pressed:
+              bg_color: 0xFFFFFF
+              border_color: 0x66CCFF
+              border_width: 4
+            on_click:
+              - script.execute: player_controls_toggle
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F040E"
+                  text_color: 0x101010
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_next_button
+            align: CENTER
+            x: 104
+            y: 0
+            width: 84
+            height: 84
+            radius: 42
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_next
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F04AD"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_volume_down_button
+            align: BOTTOM_RIGHT
+            x: -30
+            y: -20
+            width: 72
+            height: 72
+            radius: 36
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_volume_down
+            on_long_press_repeat:
+              - script.execute: player_controls_volume_down
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F075E"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls
+
+        - button:
+            id: controls_volume_up_button
+            align: BOTTOM_RIGHT
+            x: -30
+            y: -180
+            width: 72
+            height: 72
+            radius: 36
+            bg_color: 0x202020
+            bg_opa: 85%
+            border_color: 0x505050
+            border_width: 1
+            pressed:
+              bg_color: 0x66CCFF
+              bg_opa: COVER
+              border_color: 0xFFFFFF
+              border_width: 3
+            on_click:
+              - script.execute: player_controls_volume_up
+            on_long_press_repeat:
+              - script.execute: player_controls_volume_up
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "\U000F075D"
+                  text_color: 0xFFFFFF
+                  text_font: font_mdi_controls

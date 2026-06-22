@@ -1,0 +1,81 @@
+# Idle Page (Screensaver)
+lvgl:
+  pages:
+    - id: idle_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: standby_background_widget
+            align: TOP_MID
+            x: 0
+            y: 0
+            src: standby_background_image
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: idle_center_block
+            align: CENTER
+            y: 18
+            width: 310
+            height: 300
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: clock_label
+                  align: TOP_MID
+                  y: 18
+                  width: 310
+                  text: "--:--:--"
+                  text_color: 0xFFFF00
+                  text_font: font_7seg
+                  text_letter_space: 0
+                  text_align: CENTER
+
+              - label:
+                  id: date_label
+                  align: TOP_MID
+                  y: 94
+                  width: 310
+                  text: "------"
+                  text_color: 0xFFFFFF
+                  text_font: font_date
+                  text_align: CENTER
+
+        - obj:
+            id: idle_timer_block
+            align: CENTER
+            width: 320
+            height: 190
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            pad_all: 0
+            scrollable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: idle_timer_title
+                  align: TOP_MID
+                  y: 6
+                  width: 300
+                  text: "Timer Running"
+                  text_color: 0xFFFFFF
+                  text_font: font_date
+                  text_align: CENTER
+
+              - label:
+                  id: idle_timer_countdown
+                  align: CENTER
+                  y: 26
+                  width: 320
+                  text: "0:00"
+                  text_color: 0xFFFF00
+                  text_font: font_7seg
+                  text_letter_space: 0
+                  text_align: CENTER

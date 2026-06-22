@@ -1,0 +1,157 @@
+font:
+  - file: "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf"
+    id: extra_icon
+    size: 48
+    bpp: 2
+    glyphs: [
+      "\U000F050F", # mdi:thermometer
+      "\U000F058E", # mdi:water-percent
+      "\U000F0F30", # mdi:weather-hazy
+      "\U000F056E", # mdi:dashboard,
+      "\U000F0A1D", # mdi:dashboard-outline
+      "\U000F0335", # mdi:lightbulb,
+      "\U000F0336", # mdi:lightbulb-outline
+      "\U000F0F54", # mdi:home-thermometer
+      "\U000F0F55", # mdi:home-thermometer-outline
+      "\U000F001B", # mdi:air-conditioner
+      "\U000F0493", # mdi:cog
+      "\U000F08BB", # mdi:cog-outline
+      "\U000F0142", # mdi:chevron-right
+      "\U000F1805", # mdi:lightbulb-fluorescent-tube-outline
+      "\U000F1804", # mdi:lightbulb-fluorescent-tube
+      "\U000F18DE", # mdi:ceiling-light-multiple-outline
+      "\U000F18DD", # mdi:ceiling-light-multiple
+      "\U000F0425", # mdi:power
+      "\U000F07E4", # mdi:CO2
+      "\U000F1B5A", # mdi:weather-dust (used to indicate the level of PM2.5)
+      "\U000F05A9", # mdi:wifi
+      "\U000F007A", # mdi:battery-10
+      "\U000F007B", # mdi:battery-20
+      "\U000F007C", # mdi:battery-30
+      "\U000F007D", # mdi:battery-40
+      "\U000F007E", # mdi:battery-50
+      "\U000F007F", # mdi:battery-60
+      "\U000F0080", # mdi:battery-70
+      "\U000F0081", # mdi:battery-80
+      "\U000F0082", # mdi:battery-90
+      "\U000F0079", # mdi:battery-100
+      "\U000F089C", # mdi:bat-charging-10
+      "\U000F0086", # mdi:bat-charging-20
+      "\U000F0087", # mdi:bat-charging-30
+      "\U000F0088", # mdi:bat-charging-40
+      "\U000F089D", # mdi:bat-charging-50
+      "\U000F0089", # mdi:bat-charging-60
+      "\U000F089E", # mdi:bat-charging-70
+      "\U000F008A", # mdi:bat-charging-80
+      "\U000F008B", # mdi:bat-charging-90
+      "\U000F0085", # mdi:bat-charging-100
+      "\U000F06A5", # mdi:power-plug (indicate no battery connected, using USB-C power the device)
+      "\U000F109B", # mdi:ha-api
+      "\U000F0064", # mdi:assistant
+      "\U000F0004", # mdi:account
+      "\U000F0156", # mdi:close
+      "\U000F0415", # mdi:plus
+      "\U000F0374", # mdi:minus
+      "\U000F00DF", # mdi:brightness-6
+      "\U000F03D8", # mdi:color-palette
+    ]
+
+  # larger icon
+  - file: "https://raw.githubusercontent.com/Templarian/MaterialDesign-Webfont/master/fonts/materialdesignicons-webfont.ttf"
+    id: extra_icon_64
+    size: 64
+    bpp: 2
+    glyphs: [
+      "\U000F0D80", # mdi:home-floor-1
+    ]
+  
+  - file: gfonts://Montserrat@600
+    id: montserrat_96
+    size: 96
+    bpp: 2
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_display
+    size: 22
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
+      family: Noto Sans
+      weight: 300
+    id: font_playlist
+    size: 18
+    glyphsets:
+      - GF_Latin_Core
+      - GF_Cyrillic_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+    id: font_date
+    size: 28
+    glyphsets:
+      - GF_Latin_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 600
+    id: font_boot
+    size: 42
+    glyphsets:
+      - GF_Latin_Core
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 700
+    id: font_temp_big
+    size: 78
+    glyphs: "0123456789+-"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 700
+    id: font_temp_unit
+    size: 30
+    glyphs: "°CF"
+
+  - file: https://raw.githubusercontent.com/rbtdev/spiroplot/master/fonts/DSEG7/Classic-MINI/DSEG7ClassicMini-Bold.ttf
+    id: font_7seg
+    size: 50
+    glyphs: "0123456789:- "
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_weather
+    size: 76
+    glyphs:
+      - "\U000F0590"
+      - "\U000F0592"
+      - "\U000F0593"
+      - "\U000F0595"
+      - "\U000F0596"
+      - "\U000F0597"
+      - "\U000F0598"
+      - "\U000F0599"
+
+  - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/refs/heads/master/fonts/materialdesignicons-webfont.ttf
+    id: font_mdi_controls
+    size: 44
+    glyphs:
+      - "\U000F03E3"
+      - "\U000F040E"
+      - "\U000F04AD"
+      - "\U000F04AE"
+      - "\U000F04C3"  # speaker (simple speaker without waves)
+      - "\U000F0580"  # volume-low
+      - "\U000F075D"
+      - "\U000F075E"
+      - "\U000F075F"

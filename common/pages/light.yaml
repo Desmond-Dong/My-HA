@@ -1,0 +1,69 @@
+# Light Page
+lvgl:
+  pages:
+    - id: light_page
+      widgets:
+        - obj:
+            styles: content_container
+            layout:
+              type: grid
+              grid_rows: [fr(10), fr(30), fr(30), fr(30)]
+              grid_columns: [fr(1), fr(1)]
+              pad_row: 24
+              pad_column: 24
+
+            widgets:
+              - label:
+                  styles: nav_label_inactivate
+                  text_font: montserrat_32
+                  text: "Room"
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+              - obj:
+                  id: light_click_area
+                  styles: card_sm
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  clickable: true
+                  on_press:
+                    - logger.log: "Demo Light Area Clicked!"
+                    - lvgl.widget.show: light_card_modal_container
+                    - lvgl.widget.hide: color_palette_canvas
+                    - lvgl.widget.hide: color_palette_indicator
+                    - lvgl.widget.show: light_slider
+                  widgets:
+                    - button:
+                        styles: card_sm_icon_btn
+                        id: light_btn
+                        checkable: true
+                        state:
+                          checked: false
+                        checked:
+                          bg_color: 0xFDF3D8    # Dim yellow
+                        widgets:
+                          - label:
+                              id: light_label
+                              text_font: extra_icon
+                              text_color: 0X9E9E9E
+                              text: "\U000F18DE"
+                              align: CENTER
+                        on_short_click:
+                          - logger.log: "Toggle the light!"
+                          - homeassistant.action:
+                              action: light.toggle
+                              data:
+                                entity_id: ${light_entity}
+
+                    - label:
+                        styles: card_sm_main_label
+                        text: "Wohnzimmer"
+                    - label:
+                        styles: card_sm_sub_label
+                        id: light_status
+                        text: "OFF"
+        - label:
+            x: 220
+            y: 40
+            text_font: montserrat_48
+            text: "Licht"

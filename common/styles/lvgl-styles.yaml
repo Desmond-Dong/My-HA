@@ -1,0 +1,163 @@
+# LVGL Style Definitions
+# This file contains all style definitions for the UI
+lvgl:
+  style_definitions:
+  - id: sidebar
+    bg_color: 0xE9EFEE
+    bg_opa: COVER
+    border_opa: TRANSP
+    pad_top: 30
+    pad_left: 0
+    pad_right: 0
+    radius: 0
+    width: 192
+    height: 100%
+
+  - id: nav_btn_container
+    bg_opa: TRANSP
+    border_opa: TRANSP
+    width: 180
+    height: 150
+
+  - id: nav_btn_inactivate
+    bg_opa: TRANSP
+    align: CENTER
+    width: 112
+    height: 64
+    radius: 48
+    border_opa: TRANSP
+    shadow_opa: TRANSP
+
+  - id: nav_icon_activate
+    align: CENTER
+    text_font: extra_icon
+    text_color: 0x4A6363
+
+  - id: nav_icon_inactivate
+    align: CENTER
+    text_font: extra_icon
+    text_color: 0x3F4948
+
+  - id: nav_label_activate
+    align: BOTTOM_MID
+    text_color: 0x4A6363
+    text_font: montserrat_24
+
+  - id: nav_label_inactivate
+    align: BOTTOM_MID
+    text_color: 0x3F4948
+    text_font: montserrat_24
+
+  - id: content_container
+    align: CENTER
+    bg_opa: COVER
+    border_opa: TRANSP
+    height: 100%
+    width: 1080
+    x: 96
+    pad_top: 120
+    pad_left: 30
+
+  # A typical small card for control
+  # Match the style with Home Assistant
+  - id: card_sm
+    width: 400
+    height: 112
+    radius: 24
+
+  - id: card_sm_icon_btn
+    width: 72
+    height: 72
+    radius: 50
+    bg_color: 0xECECEC
+    shadow_opa: TRANSP
+    align: LEFT_MID
+
+  - id: card_sm_main_label
+    text_font: montserrat_32
+    align: TOP_LEFT
+    x: 92
+    y: 5
+    
+  - id: card_sm_sub_label
+    text_font: montserrat_24
+    align: BOTTOM_LEFT
+    x: 92
+  
+  - id: card_md
+    width: 400
+    height: 240
+    radius: 24
+
+  - id: card_md_icon_btn
+    width: 72
+    height: 72
+    radius: 50
+    bg_color: 0xECECEC
+    shadow_opa: TRANSP
+    align: TOP_LEFT
+
+  - id: card_md_main_label
+    text_font: montserrat_32
+    align: TOP_LEFT
+    x: 92
+    y: 5
+    
+  - id: card_md_sub_label
+    text_font: montserrat_24
+    x: 92
+    y: 60
+  
+  # Large card container for modal
+  - id: card_lg
+    width: 800
+    height: 600
+    radius: 24
+    align: CENTER
+    opa: 1
+
+  - id: card_lg_icon_btn
+    width: 72
+    height: 72
+    radius: 50
+    bg_color: 0xECECEC
+    shadow_opa: TRANSP
+    align: TOP_LEFT
+  
+  - id: card_lg_icon_btn_transp
+    width: 72
+    height: 72
+    radius: 50
+    bg_opa: TRANSP
+    shadow_opa: TRANSP
+    align: TOP_LEFT
+
+  - id: card_lg_main_label
+    text_font: montserrat_32
+    align: TOP_LEFT
+    
+  - id: card_lg_sub_label
+    text_font: montserrat_24
+  
+  
+  - id: climate_control_bg
+    bg_opa: COVER
+    border_opa: TRANSP
+    bg_color: 0xECECEC
+    width: 460
+    height: 84
+    radius: 24
+    align: BOTTOM_MID
+  
+  - id: climate_control_btn
+    bg_opa: TRANSP
+    width: 140
+    height: 80
+    shadow_opa: TRANSP
+
+  - id: modal_container
+    width: 1280 # full width
+    height: 720 # full height
+    bg_color: 0xA9A9A9
+    bg_opa: 0.7
+    align: CENTER

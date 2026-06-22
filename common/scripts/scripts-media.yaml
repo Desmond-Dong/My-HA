@@ -1,0 +1,329 @@
+# Media Scripts: Player Controls, Album Art, Mute, Volume
+script:
+  - id: now_playing_swipe_left
+    then:
+      - script.execute:
+          id: album_art_slide
+          direction: -1
+      - media_player.next: sendspin_group_media_player
+
+  - id: now_playing_swipe_right
+    then:
+      - script.execute:
+          id: album_art_slide
+          direction: 1
+      - media_player.previous: sendspin_group_media_player
+
+  - id: now_playing_swipe_up
+    then:
+      - media_player.volume_up: external_media_player
+      - script.execute:
+          id: show_volume_feedback
+          text: "+5"
+
+  - id: now_playing_swipe_down
+    then:
+      - media_player.volume_down: external_media_player
+      - script.execute:
+          id: show_volume_feedback
+          text: "-5"
+
+  - id: player_controls_keep_open
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_player_controls}
+
+  - id: player_controls_toggle
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.toggle: sendspin_group_media_player
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_now_playing}
+
+  - id: player_controls_swipe_previous
+    then:
+      - script.execute:
+          id: player_controls_slide_to_now_playing
+          direction: 1
+      - media_player.previous: sendspin_group_media_player
+
+  - id: player_controls_swipe_next
+    then:
+      - script.execute:
+          id: player_controls_slide_to_now_playing
+          direction: -1
+      - media_player.next: sendspin_group_media_player
+
+  - id: player_controls_previous
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.previous: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_next
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.next: sendspin_group_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_volume_down
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_down: external_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_volume_up
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - media_player.volume_up: external_media_player
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_mute
+    then:
+      - delay: 75ms
+      - if:
+          condition:
+            lambda: 'return !id(touch_swipe_detected);'
+          then:
+            - logger.log:
+                format: "Mute button pressed - current state: %d, current volume: %.2f"
+                args: ['id(is_muted)', 'id(external_media_player).volume']
+            - if:
+                condition:
+                  lambda: 'return id(is_muted);'
+                then:
+                  # Currently muted -> unmute
+                  - logger.log:
+                      format: "Unmuting - restoring volume to %.2f"
+                      args: ['id(saved_volume)']
+                  - lambda: |-
+                      id(is_muted) = false;
+                      lv_label_set_text(id(controls_mute_icon), "\U000F04C3");  // speaker icon
+                  # Re-enable hardware based on output device FIRST
+                  - if:
+                      condition:
+                        binary_sensor.is_off: headphone_detect
+                      then:
+                        # Speaker: enable hardware and set DAC output BEFORE restoring volume
+                        - switch.turn_on: speaker_enable
+                        - delay: 100ms
+                        - select.set:
+                            id: es8388_dac_output_select
+                            option: "LINE1"
+                        - delay: 50ms
+                        - logger.log: "Unmute: Speaker hardware enabled"
+                      else:
+                        # Headphones: set DAC output (speaker_enable should already be off)
+                        - select.set:
+                            id: es8388_dac_output_select
+                            option: "HEADPHONE"
+                        - delay: 100ms
+                        - logger.log: "Unmute: Headphones DAC output set"
+                  # Now restore volume
+                  - media_player.volume_set:
+                      id: external_media_player
+                      volume: !lambda 'return id(saved_volume);'
+                  - logger.log: "Unmute: Volume restored"
+                else:
+                  # Currently unmuted -> mute
+                  - lambda: |-
+                      id(saved_volume) = id(external_media_player).volume;
+                      ESP_LOGD("mute", "Muting - saved volume: %.2f", id(saved_volume));
+                      id(is_muted) = true;
+                      lv_label_set_text(id(controls_mute_icon), "\U000F075F");  // volume-off icon
+                  # Unified software mute: set volume to 0 (speaker_enable stays as-is for headphone switching)
+                  - media_player.volume_set:
+                      id: external_media_player
+                      volume: 0.0
+                  - logger.log: "Muted: Volume set to 0"
+            - script.execute: player_controls_keep_open
+
+  - id: player_controls_slide_to_now_playing
+    mode: restart
+    parameters:
+      direction: int
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = ${ui_phase_now_playing};
+      - lvgl.page.show: sendspin_page
+      - script.execute:
+          id: album_art_slide
+          direction: !lambda return direction;
+
+  - id: album_art_slide
+    mode: restart
+    parameters:
+      direction: int
+    then:
+      - script.stop: album_art_fade_cleanup
+      - lambda: |-
+          id(album_art_slide_active) = true;
+          id(sendspin_album_art_valid) = false;
+          lv_obj_t *current_art = id(album_art_widget);
+          lv_obj_t *incoming_art = id(album_art_transition_widget);
+          lv_anim_del(current_art, nullptr);
+          lv_anim_del(incoming_art, nullptr);
+          lv_img_set_src(incoming_art, id(fallback_playing_image1));
+          lv_obj_set_x(current_art, 0);
+          lv_obj_set_x(incoming_art, -direction * ${screenwidth});
+          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
+          lv_obj_set_style_img_opa(incoming_art, LV_OPA_COVER, 0);
+          lv_obj_clear_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
+
+          lv_anim_t current_slide;
+          lv_anim_init(&current_slide);
+          lv_anim_set_var(&current_slide, current_art);
+          lv_anim_set_values(&current_slide, 0, direction * ${screenwidth});
+          lv_anim_set_time(&current_slide, 300);
+          lv_anim_set_exec_cb(&current_slide, [](void *obj, int32_t x) {
+            lv_obj_set_x((lv_obj_t *) obj, x);
+          });
+          lv_anim_start(&current_slide);
+
+          lv_anim_t incoming_slide;
+          lv_anim_init(&incoming_slide);
+          lv_anim_set_var(&incoming_slide, incoming_art);
+          lv_anim_set_values(&incoming_slide, -direction * ${screenwidth}, 0);
+          lv_anim_set_time(&incoming_slide, 300);
+          lv_anim_set_exec_cb(&incoming_slide, [](void *obj, int32_t x) {
+            lv_obj_set_x((lv_obj_t *) obj, x);
+          });
+          lv_anim_start(&incoming_slide);
+      - delay: 300ms
+      - lambda: |-
+          lv_obj_t *current_art = id(album_art_widget);
+          lv_obj_t *incoming_art = id(album_art_transition_widget);
+          lv_img_set_src(current_art, id(fallback_playing_image1));
+          lv_obj_set_x(current_art, 0);
+          lv_obj_set_style_img_opa(current_art, LV_OPA_COVER, 0);
+          lv_obj_add_flag(incoming_art, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_x(incoming_art, 0);
+          id(album_art_slide_active) = false;
+      - if:
+          condition:
+            lambda: 'return id(sendspin_album_art_valid);'
+          then:
+            - script.execute: album_art_apply_decoded
+
+  - id: album_art_apply_decoded
+    mode: restart
+    then:
+      - script.stop: album_art_fade_cleanup
+      - lambda: |-
+          lv_obj_t *now_playing_art = id(album_art_widget);
+          lv_obj_t *transition_art = id(album_art_transition_widget);
+          lv_obj_t *controls_art = id(controls_album_art_widget);
+          lv_img_set_src(controls_art, id(sendspin_album_art));
+          lv_img_set_zoom(controls_art, LV_ZOOM_NONE);
+
+          if (id(ui_phase) == ${ui_phase_now_playing}) {
+            lv_anim_del(transition_art, nullptr);
+            lv_img_set_src(transition_art, id(sendspin_album_art));
+            lv_img_set_zoom(transition_art, LV_ZOOM_NONE);
+            lv_obj_set_x(transition_art, 0);
+            lv_obj_set_style_img_opa(transition_art, LV_OPA_TRANSP, 0);
+            lv_obj_clear_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
+
+            lv_anim_t fade_in;
+            lv_anim_init(&fade_in);
+            lv_anim_set_var(&fade_in, transition_art);
+            lv_anim_set_values(&fade_in, LV_OPA_TRANSP, LV_OPA_COVER);
+            lv_anim_set_time(&fade_in, 300);
+            lv_anim_set_exec_cb(&fade_in, [](void *obj, int32_t opacity) {
+              lv_obj_set_style_img_opa((lv_obj_t *) obj, opacity, 0);
+            });
+            lv_anim_start(&fade_in);
+          } else {
+            lv_img_set_src(now_playing_art, id(sendspin_album_art));
+            lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
+          }
+      - if:
+          condition:
+            lambda: 'return id(ui_phase) == ${ui_phase_now_playing};'
+          then:
+            - script.execute: album_art_fade_cleanup
+
+  - id: album_art_fade_cleanup
+    mode: restart
+    then:
+      - delay: 320ms
+      - lambda: |-
+          lv_obj_t *now_playing_art = id(album_art_widget);
+          lv_obj_t *transition_art = id(album_art_transition_widget);
+          lv_img_set_src(now_playing_art, id(sendspin_album_art));
+          lv_img_set_zoom(now_playing_art, LV_ZOOM_NONE);
+          lv_obj_set_x(now_playing_art, 0);
+          lv_obj_set_style_img_opa(now_playing_art, LV_OPA_COVER, 0);
+          lv_obj_add_flag(transition_art, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_set_x(transition_art, 0);
+
+
+  - id: show_volume_feedback
+    mode: restart
+    parameters:
+      text: string
+    then:
+      - lambda: |-
+          lv_label_set_text(id(volume_feedback_label), text.c_str());
+          lv_obj_clear_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
+      - delay: 1200ms
+      - lambda: |-
+          lv_obj_add_flag(id(volume_feedback_box), LV_OBJ_FLAG_HIDDEN);
+
+
+  - id: album_art_timeout_fallback
+    mode: restart
+    then:
+      - delay: 500ms
+      - if:
+          condition:
+            lambda: 'return !id(sendspin_album_art_valid);'
+          then:
+            - lvgl.image.update:
+                id: album_art_widget
+                src: fallback_playing_image1
+            - lvgl.image.update:
+                id: controls_album_art_widget
+                src: fallback_playing_image1
+            - lambda: |-
+                if (!id(album_art_slide_active)) {
+                  lv_obj_add_flag(id(album_art_transition_widget), LV_OBJ_FLAG_HIDDEN);
+                }
+
+  - id: mp_idle_debounce
+    mode: restart
+    then:
+      - delay: 1200ms
+      - if:
+          condition:
+            and:
+              - media_player.is_idle: external_media_player
+              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
+

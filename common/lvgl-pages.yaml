@@ -1,0 +1,10 @@
+# LVGL Pages - Master Include
+# Includes all individual page definitions
+packages:
+  page_dashboard: !include pages/dashboard.yaml
+  page_light: !include pages/light.yaml
+  page_climate: !include pages/climate.yaml
+  page_boot_sound: !include pages/boot-sound.yaml
+  page_idle: !include pages/idle.yaml
+  page_player_controls: !include pages/player-controls.yaml
+  page_sendspin: !include pages/sendspin.yaml

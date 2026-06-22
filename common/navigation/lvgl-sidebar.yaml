@@ -1,0 +1,543 @@
+# LVGL Sidebar & Top Layer
+# This file contains the navigation sidebar and modal overlays
+lvgl:
+  top_layer:
+    widgets:
+    - obj:
+        align: TOP_LEFT
+        styles: sidebar
+        id: sidebars
+        layout:
+          type: flex
+          flex_flow: COLUMN
+          pad_row: 12
+          flex_align_main: start
+          flex_align_cross: center
+          flex_align_track: center
+        widgets:
+          # Dashboard icon button
+          - obj:
+              styles: nav_btn_container
+              widgets:
+                - button:
+                    align: center
+                    styles: nav_btn_inactivate
+                    id: dash_panel_btn
+                    checkable: true
+                    state:
+                      checked: false
+                    checked:
+                      bg_color: 0xCCE8E7
+                    widgets:
+                      - label:
+                          id: dash_btn_icon
+                          align: CENTER
+                          styles: nav_icon_inactivate
+                          text: "\U000F056E" # mdi:dashboard
+                    on_value:
+                      - lambda: id(page_num) = 0;
+                      - script.execute: nav_rail_update
+                    on_press:
+                      - lvgl.page.show: dashboard_page
+                - label:
+                    styles: nav_label_inactivate
+                    id: dash_btn_label
+                    text: "Dashboard"
+
+
+          # Light bulb icon button     
+          - obj:
+              styles: nav_btn_container
+              widgets:
+                - button:
+                    align: center
+                    styles: nav_btn_inactivate
+                    id: light_panel_btn
+                    checkable: true
+                    state:
+                      checked: false
+                    checked:
+                      bg_color: 0xCCE8E7
+                    widgets:
+                      - label:
+                          id: light_btn_icon
+                          align: CENTER
+                          styles: nav_icon_inactivate
+                          text: "\U000F0336" # mid:lightbulb-outlined
+                    on_value:
+                      - lambda: id(page_num) = 1;
+                      - script.execute: nav_rail_update
+                    on_press:
+                      - lvgl.page.show: light_page
+                - label:
+                    styles: nav_label_inactivate
+                    id: light_btn_label
+                    text: "Light"
+
+          # Climate (Temp/Humi/AC) icon button
+          - obj:
+              styles: nav_btn_container
+              widgets:
+                - button:
+                    align: CENTER
+                    styles: nav_btn_inactivate
+                    id: climate_panel_btn
+                    checkable: true
+                    state:
+                      checked: false
+                    checked:
+                      bg_color: 0xCCE8E7
+                    widgets:
+                      - label:
+                          align: CENTER
+                          id: climate_btn_icon
+                          styles: nav_icon_inactivate
+                          text: "\U000F0F55" # mid:air-thermometer-outline
+                    on_value:
+                      - lambda: id(page_num) = 2;
+                      - script.execute: nav_rail_update
+                    on_press:
+                      - lvgl.page.show: climate_page
+                - label:
+                    styles: nav_label_inactivate
+                    id: climate_btn_label
+                    text: "Climate"
+          
+          # Media Player icon button
+          - obj:
+              styles: nav_btn_container
+              widgets:
+                - button:
+                    align: CENTER
+                    styles: nav_btn_inactivate
+                    id: media_panel_btn
+                    checkable: true
+                    state:
+                      checked: false
+                    checked:
+                      bg_color: 0xCCE8E7
+                    widgets:
+                      - label:
+                          align: CENTER
+                          id: media_btn_icon
+                          styles: nav_icon_inactivate
+                          text: "\U000F040A" # mdi:play-circle-outline
+                    on_value:
+                      - lambda: id(page_num) = 3;
+                      - script.execute: nav_rail_update
+                    on_press:
+                      - lvgl.page.show: player_controls_page
+                - label:
+                    styles: nav_label_inactivate
+                    id: media_btn_label
+                    text: "Media"
+          
+    - obj:
+        align: CENTER
+        id: light_card_modal_container
+        styles: modal_container
+        clickable: true
+        hidden: true # default hidden
+        on_press:
+          - lvgl.widget.hide: light_card_modal_container
+        widgets:
+          - obj:
+              styles: card_lg
+              widgets:
+                # close button
+                - button:
+                    styles: card_lg_icon_btn_transp
+                    align: TOP_LEFT
+                    widgets:
+                      - label:
+                          text_color: 0x3F4948
+                          text_font: extra_icon
+                          text: "\U000F0156"
+                          align: CENTER
+                    on_press:
+                      - lvgl.widget.hide: light_card_modal_container
+                - label:
+                    id: light_bright_label
+                    text_font: montserrat_48
+                    align: TOP_MID
+                    y: 30
+                    text: "off"
+                # Brightness adjust slider
+                - slider:
+                    align: CENTER
+                    width: 130
+                    height: 360
+                    radius: 42
+                    min_value: 0
+                    max_value: 255
+                    id: light_slider
+                    bg_color: 0xECECEC # Default inactivate color
+                    bg_opa: COVER
+                    indicator:
+                      radius: 12
+                      bg_color: 0xFFB90B
+                    knob:
+                      bg_opa: TRANSP
+                    on_boot:
+                      - lambda: |-
+                          lv_obj_move_foreground(id(light_slider));
+                    on_release:
+                      - homeassistant.action:
+                          action: light.turn_on
+                          data:
+                            entity_id: ${light_entity}
+                            brightness: !lambda return int(x);
+                      - lvgl.label.update:
+                          id: light_bright_label
+                          text: !lambda |-
+                            int percent = int(x) * 100 / 255;
+                            return std::to_string(percent) + " %";
+                # Color palette 
+                - canvas:
+                    id: color_palette_canvas
+                    width: 320
+                    height: 320
+                    hidden: true # default hidden
+                    align: CENTER
+                    on_boot:
+                      # Draw a round color palette
+                      - lvgl.canvas.fill:
+                          id: color_palette_canvas
+                          color: white
+                      - script.execute: draw_color_palette
+
+                # Make our color palette clickable
+                - obj:
+                    id: color_palette_click_area
+                    align: CENTER
+                    width: 320
+                    height: 320
+                    bg_opa: TRANSP
+                    border_opa: TRANSP
+                    radius: 50
+                    clickable: true
+                    on_click:
+                      - lvgl.widget.show: color_palette_indicator
+                      - script.execute: move_color_palette_indicator
+                      - homeassistant.action:
+                          action: light.turn_on
+                          data:
+                            entity_id: ${light_entity}
+                            red: !lambda return id(light_r);
+                            green: !lambda return id(light_g);
+                            blue: !lambda return id(light_b);
+
+                # Indicator, also make it draggable
+                - obj:
+                    id: color_palette_indicator
+                    align: CENTER
+                    width: 50
+                    height: 50
+                    radius: 50
+                    hidden: true
+                    clickable: true
+                    bg_color: white
+                    border_width: 3
+                    border_color: white
+                    # Make this indicator draggable
+                    on_boot:
+                      - script.execute: draw_color_palette_indicator
+                    on_release:
+                      - homeassistant.action:
+                          action: light.turn_on
+                          data:
+                            entity_id: ${light_entity}
+                            red: !lambda return id(light_r);
+                            green: !lambda return id(light_g);
+                            blue: !lambda return id(light_b);
+
+                    
+                # Button group
+                - obj:
+                    width: 320
+                    height: 84
+                    radius: 50
+                    scrollable: false
+                    align: BOTTOM_MID
+                    bg_color: 0xF3F4F4
+                    border_opa: TRANSP
+                    layout:
+                      type: flex
+                      flex_align_main: CENTER
+                      flex_align_cross: CENTER
+                      flex_align_track: CENTER
+                    widgets:
+                      - button:
+                          id: light_pwr_btn
+                          styles: card_md_icon_btn
+                          bg_opa: TRANSP
+                          widgets:
+                            - label:
+                                text_color: 0x3F4948
+                                text_font: extra_icon
+                                text: "\U000F0425"
+                                align: CENTER
+                          on_short_click:
+                            - logger.log: "Toggle the light!"
+                            - homeassistant.action:
+                                action: light.toggle
+                                data:
+                                  entity_id: ${light_entity}
+                      - button:
+                          id: bright_ctrl_btn
+                          styles: card_md_icon_btn
+                          bg_opa: TRANSP
+                          widgets:
+                            - label:
+                                align: CENTER
+                                text_color: 0x3F4948
+                                text_font: extra_icon
+                                text: "\U000F00DF"
+                          on_press:
+                            - lvgl.widget.hide: color_palette_canvas
+                            - lvgl.widget.hide: color_palette_indicator
+                            - lvgl.widget.show: light_slider
+                      - button:
+                          id: color_palette_btn
+                          styles: card_md_icon_btn
+                          bg_opa: TRANSP
+                          widgets:
+                            - label:
+                                id: color_palette_icon
+                                align: CENTER
+                                text_color: 0x3F4948
+                                text_font: extra_icon
+                                text: "\U000F03D8"
+                          on_press:
+                            - lvgl.widget.hide: light_slider
+                            - lvgl.widget.show: color_palette_canvas
+                            - lvgl.widget.show: color_palette_indicator
+    - obj:
+        align: TOP_RIGHT
+        id: status_bar
+        width: 1280
+        height: 90
+        bg_opa: TRANSP
+        border_opa: TRANSP
+        layout:
+          type: FLEX
+          flex_flow: ROW_REVERSE
+          flex_align_main: END
+          flex_align_cross: CENTER
+          flex_align_track: CENTER
+          pad_column: 20
+        widgets:
+          - label:
+              id: pwr_bat_icon_label
+              text_font: extra_icon
+              text: "\U000F06A5"
+          - label:
+              id: wifi_icon_label
+              hidden: true
+              text_font: extra_icon
+              text: "\U000F05A9"
+          - label:
+              id: api_icon_label
+              hidden: true
+              text_font: extra_icon
+              text: "\U000F109B"
+    - obj:
+        align: CENTER
+        id: ac_container
+        styles: modal_container
+        clickable: true
+        hidden: true # default hidden
+        on_press:
+          - lvgl.widget.hide: ac_container
+        widgets:
+          - obj:
+              styles: card_lg
+              widgets:
+                - button:
+                    styles: card_lg_icon_btn_transp
+                    align: TOP_LEFT
+                    widgets:
+                      - label:
+                          text_color: 0x3F4948
+                          text_font: extra_icon
+                          text: "\U000F0156"
+                          align: CENTER
+                    on_press:
+                      - lvgl.widget.hide: ac_container
+                - arc:
+                    align: CENTER
+                    id: ac_arc
+                    min_value: 180
+                    max_value: 320
+                    arc_width: 35
+                    width: 320
+                    height: 320
+                    adjustable: true
+                    arc_color: 0xEBEBEB
+                    knob:
+                      pad_all: -2
+                      outline_width: 3
+                      outline_color: 0x9E9E9E
+                      bg_color: 0xFFFFFF
+                    indicator:
+                      arc_width: 35
+                      arc_color: 0xEBEBEB
+                    # Prevent frequent use of 'on_value'
+                    # In case of performance issue
+                    on_release:
+                      - lambda: |-
+                          int mod = int(x) % 5;
+                          if ( mod == 0 ) 
+                            lv_arc_set_value(id(ac_arc), x);
+                          else 
+                            lv_arc_set_value(id(ac_arc), x - mod);
+                      - lvgl.label.update:
+                          id: ac_temp_label
+                          text:
+                            format: "%.1f °C"
+                            args: [ 'float(lv_arc_get_value(id(ac_arc))) / 10.0f' ]
+                      - lvgl.spinbox.update:
+                          id: temp_spin_box
+                          value: !lambda return float(lv_arc_get_value(id(ac_arc)));
+                      
+                      - lambda: id(set_ac_temp)->execute(float(x) / 10.0f);
+
+                - label:
+                    text_font: montserrat_24
+                    id: ac_state
+                    text: "OFF"
+                    align: CENTER
+                    y: -80
+                - label:
+                    id: ac_temp_label
+                    text_font: montserrat_48
+                    text: "18.0 °C"
+                    align: CENTER
+                - obj:
+                    width: 200
+                    height: 80
+                    align: CENTER
+                    y: 160
+                    bg_opa: TRANSP
+                    border_opa: TRANSP
+                    scrollable: false
+                    layout:
+                      type: FLEX
+                      flex_align_main: CENTER
+                      flex_align_cross: CENTER
+                      flex_align_track: CENTER
+                      pad_column: 28
+                    widgets:
+                      - button:
+                          width: 64
+                          height: 64
+                          radius: 50
+                          bg_opa: TRANSP
+                          shadow_width: 0
+                          border_width: 1
+                          widgets:
+                            - label:
+                                text_font: extra_icon
+                                text_color: 0x3F4948
+                                text: "\U000F0374"
+                                align: CENTER
+                          on_press:
+                            - lvgl.arc.update:
+                                id: ac_arc
+                                value: !lambda return lv_arc_get_value(id(ac_arc)) - 5.0f;
+                            - lvgl.label.update:
+                                id: ac_temp_label
+                                text:
+                                  format: "%.1f °C"
+                                  args: [ 'float(lv_arc_get_value(id(ac_arc))) / 10.0f' ]
+                            - lvgl.spinbox.update:
+                                id: temp_spin_box
+                                value: !lambda return float(lv_arc_get_value(id(ac_arc)));
+                      - button:
+                          width: 64
+                          height: 64
+                          radius: 50
+                          bg_opa: TRANSP
+                          shadow_width: 0
+                          border_width: 1
+                          widgets:
+                            - label:
+                                text_font: extra_icon
+                                text_color: 0x3F4948
+                                text: "\U000F0415"
+                                align: CENTER
+                          on_press:
+                            - lvgl.arc.update:
+                                id: ac_arc
+                                value: !lambda return lv_arc_get_value(id(ac_arc)) + 5.0f;
+                            - lvgl.label.update:
+                                id: ac_temp_label
+                                text:
+                                  format: "%.1f °C"
+                                  args: [ 'float(lv_arc_get_value(id(ac_arc))) / 10.0f' ]
+                            - lvgl.spinbox.update:
+                                id: temp_spin_box
+                                value: !lambda return float(lv_arc_get_value(id(ac_arc)));
+                - obj:
+                    width: 700
+                    height: 100
+                    bg_opa: TRANSP
+                    border_opa: TRANSP
+                    align: BOTTOM_MID
+                    scrollable: false
+                    layout:
+                      type: FLEX
+                      flex_align_main: CENTER
+                      flex_align_cross: CENTER
+                      flex_align_track: CENTER
+                      pad_column: 14
+                    widgets:
+                      # AC Mode
+                      - label:
+                          text_font: montserrat_24
+                          text: "Mode"
+                      - dropdown:
+                          id: ac_mode_dd
+                          width: 150
+                          height: 64
+                          radius: 12
+                          pad_top: 16
+                          pad_bottom: 16
+                          pad_left: 18
+                          text_font: montserrat_24
+                          border_opa: TRANSP
+                          bg_color: 0xF2F2F2
+                          dir: TOP
+                          indicator:
+                            opa: TRANSP
+                          selected_text: "Off"
+                          options:
+                            - Heat_Cool
+                            - Heat
+                            - Cool
+                            - Dry
+                            - Only Fan
+                            - "Off" # In case conversions
+                          dropdown_list:
+                            text_font: montserrat_24
+                            text_align: CENTER
+                            selected:
+                              checked:
+                                text_color: 0x000000
+                                bg_color: 0xE9F3F8
+                          on_change:
+                            - lambda: id(update_arc_color)->execute(x);
+                            - lvgl.label.update:
+                                id: ac_state
+                                text: !lambda |-
+                                  char buf[16];
+                                  lv_dropdown_get_selected_str(id(ac_mode_dd).obj, buf, sizeof(buf));
+                                  return str_upper_case(std::string(buf));
+                            - lvgl.label.update:
+                                id: ac_state_label
+                                text: !lambda |-
+                                  char ac_mode_buf[16];
+                                  lv_dropdown_get_selected_str(id(ac_mode_dd).obj, ac_mode_buf, sizeof(ac_mode_buf));
+                                  return str_upper_case(std::string(ac_mode_buf));
+
+                            - lambda: id(set_ac_state)->execute(x);

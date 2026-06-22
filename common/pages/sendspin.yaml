@@ -1,0 +1,97 @@
+# Sendspin Page (Now Playing)
+lvgl:
+  pages:
+    - id: sendspin_page
+      bg_color: 0x000000
+      widgets:
+        # Invisible overlay to catch taps and return to sidebar
+        - obj:
+            align: CENTER
+            width: 1280
+            height: 720
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            clickable: true
+            on_click:
+              - lvgl.widget.show: sidebars
+              - script.execute: nav_rail_update
+              - lambda: |-
+                  // Return to the last selected page
+                  switch (id(page_num)) {
+                    case 0:
+                      lv_obj_send_event(id(dash_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    case 1:
+                      lv_obj_send_event(id(light_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    case 2:
+                      lv_obj_send_event(id(climate_panel_btn), LV_EVENT_PRESSED, NULL);
+                      break;
+                    default:
+                      break;
+                  }
+        - image:
+            id: album_art_widget
+            align: CENTER
+            x: 96
+            y: 0
+            src: fallback_playing_image1
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+
+        - image:
+            id: album_art_transition_widget
+            align: CENTER
+            x: 96
+            y: 0
+            src: fallback_playing_image1
+            width: ${imagewidth}
+            height: ${imageheight}
+            antialias: false
+            clickable: false
+            hidden: true
+
+        - obj:
+            id: now_playing_bar
+            align: BOTTOM_MID
+            y: -28
+            width: 300
+            height: 36
+            bg_color: 0x000000
+            bg_opa: 75%
+            border_opa: TRANSP
+            radius: 4
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: now_playing_label
+                  align: CENTER
+                  width: 284
+                  text: ""
+                  text_color: 0xFFFFFF
+                  text_font: font_display
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+
+        - obj:
+            id: volume_feedback_box
+            align: CENTER
+            width: 126
+            height: 92
+            bg_color: 0x000000
+            bg_opa: 75%
+            border_color: 0x66CCFF
+            border_width: 2
+            radius: 18
+            scrollable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: volume_feedback_label
+                  align: CENTER
+                  text: "+5"
+                  text_color: 0xFFFFFF
+                  text_font: font_temp_big

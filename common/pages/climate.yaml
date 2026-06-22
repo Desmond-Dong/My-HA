@@ -1,0 +1,125 @@
+# Climate Page
+lvgl:
+  pages:
+    - id: climate_page
+      widgets:
+        - obj:
+            styles: content_container
+            layout:
+              type: grid
+              grid_rows: [fr(10), fr(40), fr(10), fr(40)]
+              grid_columns: [fr(1), fr(1)]
+              pad_row: 24
+              pad_column: 24
+            widgets:
+              - label:
+                  styles: nav_label_inactivate
+                  text_font: montserrat_32
+                  text: "Wohnzimmer"
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+              - obj:
+                  styles: card_md
+                  clickable: true
+                  on_press:
+                    - lvgl.widget.show: ac_container
+
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  widgets:
+                    - label:
+                        styles: card_md_icon_btn
+                        text_font: extra_icon_64
+                        text_color: 0xF5C23B
+                        text: "\U000F0D80"
+                    - obj:
+                        bg_opa: TRANSP
+                        border_opa: TRANSP
+                        x: 92
+                        y: 60
+                        pad_all: 0
+                        width: 300
+                        layout:
+                          type: FLEX
+                          flex_align_cross: CENTER
+                          pad_column: 8
+                        widgets:
+                          - label:
+                              id: ac_state_label
+                              text_font: montserrat_24
+                              text: "Off"   
+                    - obj:
+                        styles: climate_control_bg
+                        scrollable: false
+                        widgets:
+                          - button:
+                              id: temp_spin_down
+                              styles: climate_control_btn
+                              align: LEFT_MID
+                              on_click:
+                                - lambda: |-
+                                    lv_spinbox_set_step(id(temp_spin_box), 5);
+                                - lvgl.spinbox.decrement: temp_spin_box
+                              widgets:
+                                - label:
+                                    align: LEFT_MID
+                                    text_color: 0x5E5E5E
+                                    text_font: montserrat_48
+                                    text: "-"
+                              
+                          - spinbox:
+                              id: temp_spin_box
+                              align: CENTER
+                              width: 128
+                              height: 52
+                              x: -40
+                              range_from: 18.0
+                              range_to: 32.0
+                              digits: 3
+                              decimal_places: 1
+                              rollover: false
+                              value: 180  # Scale down to 18.0
+                              text_align: CENTER
+                              text_font: montserrat_32
+                              text_color: 0x3F4948
+                              bg_opa: TRANSP
+                              border_width: 0
+                              cursor:
+                                bg_opa: transp
+                                text_color: 0x3F4948
+                              on_value:
+                                # use lvgl.arc.update will result a crash
+                                - lambda: |-
+                                    lv_arc_set_value(id(ac_arc), x * 10);
+                                - lvgl.label.update:
+                                    id: ac_temp_label
+                                    text:
+                                      format: "%.1f °C"
+                                      args: [ 'x' ]
+                                - lambda: id(set_ac_temp)->execute(x);
+                          - label:
+                              align: CENTER
+                              text_color: 0x3F4948
+                              text_font: montserrat_32
+                              x: 20
+                              text: "°C"
+                          - button:
+                              id: temp_spin_up
+                              styles: climate_control_btn
+                              align: RIGHT_MID
+                              on_click:
+                                - lambda: |-
+                                    lv_spinbox_set_step(id(temp_spin_box), 5);
+                                - lvgl.spinbox.increment: temp_spin_box
+                              widgets:
+                                - label:
+                                    align: RIGHT_MID
+                                    text_color: 0x5E5E5E
+                                    text_font: montserrat_48
+                                    text: "+"
+        - label:
+            x: 220
+            y: 40
+            text_font: montserrat_48
+            text: "Heizung"

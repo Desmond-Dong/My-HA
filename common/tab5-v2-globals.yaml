@@ -1,0 +1,146 @@
+globals:
+  - id: page_num
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: light_r
+    type: uint8_t
+    restore_value: no
+    initial_value: '0xFF'
+
+  - id: light_g
+    type: uint8_t
+    restore_value: no
+    initial_value: '0xFF'
+
+  - id: light_b
+    type: uint8_t
+    restore_value: no
+    initial_value: '0xFF'
+
+  - id: hvac_state_table
+    type: const char *[6]
+    initial_value: '{ "heat_cool", "heat", "cool", "dry", "fan_only", "off" }'
+
+  - id: fan_modes_table
+    type: const char *[4]
+    initial_value: '{ "high", "medium", "low", "auto" }'
+
+# sendspin media player
+  - id: sendspin_album_art_valid
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: album_art_slide_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: boot_sound_played
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: boot_announce_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: active_image_set
+    type: int
+    restore_value: no
+    initial_value: "1"
+  - id: timer_is_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: timer_seconds_left
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: timer_total_seconds
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: weather_available
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: ui_phase
+    type: int
+    restore_value: no
+    initial_value: "${ui_phase_standby}"
+  - id: touch_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: touch_swipe_detected
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: touch_start_x
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_start_y
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_last_x
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_last_y
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: touch_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: preferred_screen_brightness
+    type: float
+    restore_value: yes
+    initial_value: "1.0"
+  - id: screen_timeout_dimmed
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: volume_ring_overlay
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: volume_ring_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: volume_percent_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: timer_progress_arc
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: timer_progress_label
+    type: lv_obj_t*
+    restore_value: no
+    initial_value: "nullptr"
+  - id: accent_red
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent_green
+    type: int
+    restore_value: yes
+    initial_value: "255"
+  - id: accent_blue
+    type: int
+    restore_value: yes
+    initial_value: "0"
+  - id: is_muted
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: saved_volume
+    type: float
+    restore_value: no
+    initial_value: "0.6"

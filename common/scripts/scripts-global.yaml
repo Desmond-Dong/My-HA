@@ -1,0 +1,220 @@
+# Global Scripts: Navigation, UI Phase, Standby
+script:
+  - id: expand_nav_btn_click_area
+    # Expand the clickable area for the main navigation buttons so
+    # that touches near the icons are also registered. This improves
+    # usability of the side navigation rail on small touch targets.
+    then:
+      - lambda: |-
+          std::vector<lv_obj_t*> btns = {
+            id(dash_panel_btn),
+            id(light_panel_btn),
+            id(climate_panel_btn),
+            id(media_panel_btn)
+          };
+          for (auto* btn : btns) {
+            lv_obj_set_ext_click_area(btn, 180);
+          }
+  
+  - id: nav_rail_update
+    # Update the navigation rail UI to reflect the current page
+    # selection. This sets the checked state on the correct nav button,
+    # updates the icon to the active/inactive glyph, and applies the
+    # appropriate label style (active/inactive color).
+    then:
+      - lambda: |-
+          const int active = id(page_num);
+          lv_obj_t* buttons[] = { 
+              id(dash_panel_btn), 
+              id(light_panel_btn), 
+              id(climate_panel_btn),
+              id(media_panel_btn)
+          };
+          lv_obj_t* icons[] = { 
+              id(dash_btn_icon), 
+              id(light_btn_icon), 
+              id(climate_btn_icon),
+              id(media_btn_icon)
+          };
+          lv_obj_t* labels[] = { 
+              id(dash_btn_label), 
+              id(light_btn_label), 
+              id(climate_btn_label),
+              id(media_btn_label)
+          };
+          const char* icon_unchecked[] = {
+              "\U000F0A1D", // dashboard-outline
+              "\U000F0336", // lightbulb-outline
+              "\U000F0F55", // thermometer-outline
+              "\U000F040A"  // play-circle-outline
+          };
+          const char* icon_checked[] = {
+              "\U000F056E", // dashboard
+              "\U000F0335", // lightbulb
+              "\U000F0F54", // thermometer
+              "\U000F040C"  // play-circle (filled)
+          };
+
+          const int count = sizeof(buttons) / sizeof(buttons[0]);
+          
+          // Update button UI
+          for (int i = 0; i < count; i++) {
+              if (i == id(page_num)) {
+                lv_obj_add_state(buttons[i], LV_STATE_CHECKED);
+              } else {
+                lv_obj_clear_state(buttons[i], LV_STATE_CHECKED);
+              }
+              bool selected = (i == active);
+              lv_obj_add_style(labels[i], selected ? id(nav_label_activate) : id(nav_label_inactivate), LV_PART_MAIN);
+              lv_label_set_text(icons[i], selected ? icon_checked[i] : icon_unchecked[i]);
+          }
+    
+  - id: sync_ha
+    then:
+      - logger.log: "Sync with Home Assistant"
+
+  - id: apply_accent_color_debounced
+    mode: restart
+    then:
+      - delay: 40ms
+      - script.execute: apply_accent_color
+
+  - id: apply_accent_color
+    mode: restart
+    then:
+      - lambda: |-
+          const int r = std::max(0, std::min(255, id(accent_red)));
+          const int g = std::max(0, std::min(255, id(accent_green)));
+          const int b = std::max(0, std::min(255, id(accent_blue)));
+          const uint32_t accent_u32 = ((uint32_t) r << 16) | ((uint32_t) g << 8) | (uint32_t) b;
+          const uint32_t dark_u32 = ((uint32_t) (r / 10) << 16) | ((uint32_t) (g / 10) << 8) | (uint32_t) (b / 10);
+          const lv_color_t accent = lv_color_hex(accent_u32);
+          const lv_color_t accent_dark = lv_color_hex(dark_u32);
+
+          lv_obj_set_style_text_color(id(clock_label), accent, 0);
+          lv_obj_set_style_text_color(id(idle_timer_countdown), accent, 0);
+          lv_obj_set_style_bg_color(id(controls_toggle_button), accent, 0);
+          lv_obj_set_style_border_color(id(controls_toggle_button), accent, LV_STATE_PRESSED);
+          lv_obj_set_style_border_color(id(volume_feedback_box), accent, 0);
+
+  - id: set_ui_phase
+    mode: restart
+    parameters:
+      phase: int
+    then:
+      - script.stop: player_controls_timeout
+      - lambda: |-
+          id(ui_phase) = phase;
+      - script.execute: standby_screen_activity
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_standby};'
+          then:
+            - lvgl.page.show: idle_page
+            - lvgl.widget.show: sidebars
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_player_controls};'
+          then:
+            - lvgl.page.show: player_controls_page
+            - lvgl.widget.hide: sidebars
+            - script.execute: player_controls_timeout
+      - if:
+          condition:
+            lambda: 'return phase == ${ui_phase_now_playing};'
+          then:
+            - lvgl.page.show: sendspin_page
+            - lvgl.widget.hide: sidebars
+
+  - id: player_controls_timeout
+    mode: restart
+    then:
+      - delay: !lambda |-
+          return (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f);
+      - if:
+          condition:
+            media_player.is_idle: external_media_player
+          then:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_standby}
+          else:
+            - script.execute:
+                id: set_ui_phase
+                phase: ${ui_phase_now_playing}
+
+
+  - id: load_standby_background
+    mode: restart
+    then:
+      - online_image.set_url:
+          id: standby_background_image
+          url: !lambda |-
+            return "https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/Other/360x360/" + id(standby_background_choice).current_option().str() + ".png";
+
+  - id: standby_screen_activity
+    mode: restart
+    then:
+      - script.stop: standby_screen_timeout
+      - if:
+          condition:
+            lambda: 'return id(screen_timeout_dimmed);'
+          then:
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness);'
+            - lambda: |-
+                id(screen_timeout_dimmed) = false;
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+              - lambda: 'return !id(timer_is_active);'
+          then:
+            - script.execute: standby_screen_timeout
+
+  - id: standby_screen_timeout
+    mode: restart
+    then:
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+              - lambda: 'return !id(timer_is_active);'
+          then:
+            - lambda: |-
+                id(preferred_screen_brightness) = id(Sled).remote_values.get_brightness();
+                id(screen_timeout_dimmed) = true;
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness) * 0.60f;'
+          else:
+            - script.stop: standby_screen_timeout
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+              - lambda: 'return !id(timer_is_active);'
+          then:
+            - light.turn_on:
+                id: Sled
+                brightness: !lambda 'return id(preferred_screen_brightness) * 0.25f;'
+          else:
+            - script.stop: standby_screen_timeout
+      - delay: !lambda |-
+          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+      - if:
+          condition:
+            and:
+              - switch.is_on: standby_screen_timeout_enabled
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
+              - lambda: 'return !id(timer_is_active);'
+          then:
+            - light.turn_off: Sled

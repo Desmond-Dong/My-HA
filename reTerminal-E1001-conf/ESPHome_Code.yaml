@@ -2,7 +2,7 @@ esphome:
   name: e1001
   friendly_name: E1001
   on_boot:
-    priority: 600
+    priority: 800
     then:
       - output.turn_on: mic_enable
       - delay: 30s
@@ -13,14 +13,13 @@ esphome:
       - component.update: battery_voltage
       - component.update: battery_level
 
-  project:
-    name: francescopace.espectre
-    version: "2.2.0"
+#  project:
+#    name: francescopace.espectre
+#    version: "2.3.0"
 esp32:
-  board: esp32-s3-devkitc-1
+  board: seeed_xiao_esp32s3
   framework:
-    type: esp-idf
-    #type: arduino
+    type: arduino
 # Enable logging
 logger:
 #  level: VERY_VERBOSE
@@ -66,6 +65,36 @@ api:
             }
 
             bz->set_level(0);
+    - service: start_sleep_monitoring
+      then:
+        - switch.turn_on: sleep_monitoring
+        - lambda: |-
+            id(sleep_noise_event_count) = 0;
+            id(sleep_noise_total_ms) = 0;
+            id(sleep_noise_started_ms) = millis();
+            id(sleep_noise_active) = false;
+            id(sleep_noise_floor_initialized) = false;
+            id(sleep_noise_floor_db) = 0.0f;
+        - logger.log: "Sleep monitoring started"
+    - service: stop_sleep_monitoring
+      then:
+        - switch.turn_off: sleep_monitoring
+        - lambda: |-
+            if (id(sleep_noise_active)) {
+              id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
+              id(sleep_noise_active) = false;
+            }
+        - logger.log: "Sleep monitoring stopped"
+    - service: reset_sleep_monitoring
+      then:
+        - lambda: |-
+            id(sleep_noise_event_count) = 0;
+            id(sleep_noise_total_ms) = 0;
+            id(sleep_noise_started_ms) = millis();
+            id(sleep_noise_active) = false;
+            id(sleep_noise_floor_initialized) = false;
+            id(sleep_noise_floor_db) = 0.0f;
+        - logger.log: "Sleep monitoring reset"
 ota:
   - platform: esphome
     password: "6abb3deae74569ff3725fde6bac204e8"
@@ -88,21 +117,27 @@ captive_portal:
 
 external_components:
   - source:
-      type: git
-      url: https://github.com/francescopace/espectre
-      ref: main
-    components: [ espectre ]
-    refresh: always
+      type: local
+      path: components
+    components: [ reterminal_pdm_audio ]
+
+#external_components:
+#  - source:
+#      type: git
+#      url: https://github.com/francescopace/espectre
+#      ref: main
+#    components: [ espectre ]
+#    refresh: always
 #  - source:
 #      type: local
 #      path: "components"
-espectre:
-  id: espectre_csi
+#espectre:
+#  id: espectre_csi
 
 
-dashboard_import:
-  package_import_url: github://francescopace/espectre/examples/espectre-s3.yaml@main
-  import_full_config: true
+#dashboard_import:
+#  package_import_url: github://francescopace/espectre/examples/espectre-s3.yaml@main
+#  import_full_config: true
 
 # BLE Proxy
 esp32_ble_tracker:
@@ -120,35 +155,11 @@ bluetooth_proxy:
 #  wakeup_pin_mode: INVERT_WAKEUP
 
 i2s_audio:
-  i2s_lrclk_pin: GPIO46 # Note: labeled as "useless"
-  i2s_bclk_pin: GPIO42
+  - id: i2s_mic_bus
+    i2s_lrclk_pin: GPIO42    # PDM_CLK (E1001 onboard PDM mic)
 
-# Configuration for the microphone using I2S audio
-microphone:
-  - platform: i2s_audio
-    id: echo_microphone
-    i2s_din_pin: GPIO41
-    adc_type: external
-    pdm: true
-    use_apll: true
-    channel: left
-    on_data:
-      - lambda: |-
-          int32_t sum = 0;
-          for (auto v : x) {
-            sum += abs(v);
-          }
-          ESP_LOGW("MIC", "Energy=%ld", sum / (x.size() ? x.size() : 1));
-
-# Configuration for the Voice Assistant
-voice_assistant:
-  microphone: echo_microphone
-  use_wake_word: false
-  noise_suppression_level: 0
-  conversation_timeout: 300s
-  volume_multiplier: 1.0
-
-
+reterminal_pdm_audio:
+  id: pdm_audio
 
 debug:
   update_interval: 5s
@@ -184,6 +195,34 @@ switch:
           
       - delay: 500ms
       - switch.turn_off: refresh_display
+  - platform: template
+    name: "Sleep Monitoring"
+    id: sleep_monitoring
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    turn_on_action:
+      - lambda: |-
+          id(sleep_noise_event_count) = 0;
+          id(sleep_noise_total_ms) = 0;
+          id(sleep_noise_started_ms) = millis();
+          id(sleep_noise_active) = false;
+          id(sleep_noise_floor_initialized) = false;
+          id(sleep_noise_floor_db) = 0.0f;
+      - logger.log: "Sleep monitoring armed"
+    turn_off_action:
+      - lambda: |-
+          if (id(sleep_noise_active)) {
+            id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
+            id(sleep_noise_active) = false;
+          }
+      - logger.log: "Sleep monitoring disarmed"
+  - platform: template
+    name: "Sleep Adaptive Threshold"
+    id: sleep_adaptive_threshold
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
 #  - platform: template
 #    name: "Force Deep Sleep"
 #    turn_on_action:
@@ -248,6 +287,68 @@ sensor:
       name: "Max Free Block"
     loop_time:
       name: "Loop Time"
+  - platform: template
+    name: "Sleep Noise Events"
+    id: sleep_noise_events
+    unit_of_measurement: "events"
+    accuracy_decimals: 0
+    lambda: |-
+      return id(sleep_noise_event_count);
+    update_interval: 10s
+  - platform: template
+    name: "Sleep Noise Minutes"
+    id: sleep_noise_minutes
+    unit_of_measurement: "min"
+    accuracy_decimals: 1
+    lambda: |-
+      uint32_t total_ms = id(sleep_noise_total_ms);
+      if (id(sleep_noise_active)) {
+        total_ms += millis() - id(sleep_noise_started_ms);
+      }
+      return total_ms / 60000.0f;
+    update_interval: 10s
+  - platform: template
+    name: "Sleep Score"
+    id: sleep_score
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    icon: "mdi:sleep"
+    lambda: |-
+      uint32_t total_ms = id(sleep_noise_total_ms);
+      if (id(sleep_noise_active)) {
+        total_ms += millis() - id(sleep_noise_started_ms);
+      }
+      const float noise_minutes = total_ms / 60000.0f;
+      float score = 100.0f - (id(sleep_noise_event_count) * 2.0f) - (noise_minutes * 1.5f);
+      if (score < 0.0f) return 0.0f;
+      if (score > 100.0f) return 100.0f;
+      return score;
+    update_interval: 30s
+  - platform: template
+    name: "Sleep Noise Floor"
+    id: sleep_noise_floor
+    unit_of_measurement: "dB"
+    accuracy_decimals: 1
+    icon: "mdi:ear-hearing"
+    lambda: |-
+      return id(sleep_noise_floor_db);
+    update_interval: 10s
+  - platform: template
+    name: "Sleep Effective Threshold"
+    id: sleep_effective_threshold
+    unit_of_measurement: "dB"
+    accuracy_decimals: 1
+    icon: "mdi:tune"
+    lambda: |-
+      float threshold = id(sleep_noise_threshold).state;
+      if (id(sleep_adaptive_threshold).state && id(sleep_noise_floor_initialized)) {
+        const float adaptive_threshold = id(sleep_noise_floor_db) + id(sleep_adaptive_margin).state;
+        if (adaptive_threshold > threshold) {
+          threshold = adaptive_threshold;
+        }
+      }
+      return threshold;
+    update_interval: 10s
 text:
   - platform: template
     name: "Custom Image URL"
@@ -285,8 +386,72 @@ output:
     pin: GPIO38
     id: mic_enable
 
+number:
+  - platform: template
+    name: "Sleep Noise Threshold"
+    id: sleep_noise_threshold
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 48
+  - platform: template
+    name: "Sleep Adaptive Margin"
+    id: sleep_adaptive_margin
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    min_value: 3
+    max_value: 30
+    step: 1
+    initial_value: 8
+  - platform: template
+    name: "Sleep Baseline Follow"
+    id: sleep_baseline_follow
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    min_value: 0.01
+    max_value: 0.30
+    step: 0.01
+    initial_value: 0.08
 
 binary_sensor:
+  - platform: template
+    name: "Sleep Noise Event"
+    id: sleep_noise_event
+    device_class: sound
+    lambda: |-
+      if (!id(sleep_monitoring).state) {
+        return false;
+      }
+      if (!id(sleep_rms_loudness).has_state()) {
+        return false;
+      }
+      float threshold = id(sleep_noise_threshold).state;
+      if (id(sleep_adaptive_threshold).state && id(sleep_noise_floor_initialized)) {
+        const float adaptive_threshold = id(sleep_noise_floor_db) + id(sleep_adaptive_margin).state;
+        if (adaptive_threshold > threshold) {
+          threshold = adaptive_threshold;
+        }
+      }
+      return id(sleep_rms_loudness).state >= threshold;
+    filters:
+      - delayed_on: 800ms
+      - delayed_off: 1500ms
+    on_press:
+      - lambda: |-
+          id(sleep_noise_active) = true;
+          id(sleep_noise_started_ms) = millis();
+          id(sleep_noise_event_count) += 1;
+    on_release:
+      - lambda: |-
+          if (id(sleep_noise_active)) {
+            id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
+            id(sleep_noise_active) = false;
+          }
   - platform: gpio    # Next page
     pin:
       number: GPIO3
@@ -305,10 +470,12 @@ binary_sensor:
       - delayed_on: 30ms
       - delayed_off: 30ms
     on_press:
-      - voice_assistant.start:
-
-    on_release:
-      - voice_assistant.stop:
+      - lambda: |-
+          id(sleep_noise_event_count) = 0;
+          id(sleep_noise_total_ms) = 0;
+          id(sleep_noise_started_ms) = millis();
+          id(sleep_noise_active) = false;
+      - logger.log: "Sleep stats reset"
 
   - platform: gpio     # Key3 物理刷新按键
     pin:
@@ -318,9 +485,7 @@ binary_sensor:
     id: key3
     name: "Key3"
     on_press:
-      - lambda: |-
-          id(dashboard_image).set_url(id(custom_url_input).state);
-          id(dashboard_image).update();
+      - component.update: dashboard_image
           
 
   # - platform: gpio
@@ -336,15 +501,59 @@ binary_sensor:
   #           id(page_index) = (id(page_index) - 1 + 3) % 3;
   #           id(epaper_display).update();
 
-# Home Assistant time
-#time:
-#  - platform: homeassistant
-#    id: ha_time
-#globals:
-#  - id: sleep_minutes
-#    type: int
-#    restore_value: no
-#    initial_value: '0'
+time:
+  - platform: homeassistant
+    id: ha_time
+
+globals:
+  - id: sleep_noise_event_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: sleep_noise_total_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: sleep_noise_started_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: sleep_noise_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: sleep_noise_floor_db
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: sleep_noise_floor_initialized
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          if (!id(sleep_monitoring).state) {
+            return;
+          }
+          if (!id(sleep_rms_loudness).has_state()) {
+            return;
+          }
+          if (id(sleep_noise_active)) {
+            return;
+          }
+
+          const float rms = id(sleep_rms_loudness).state;
+          if (!id(sleep_noise_floor_initialized)) {
+            id(sleep_noise_floor_db) = rms;
+            id(sleep_noise_floor_initialized) = true;
+            return;
+          }
+
+          const float alpha = id(sleep_baseline_follow).state;
+          id(sleep_noise_floor_db) = id(sleep_noise_floor_db) + ((rms - id(sleep_noise_floor_db)) * alpha);
 
 ##number:
  # - platform: template

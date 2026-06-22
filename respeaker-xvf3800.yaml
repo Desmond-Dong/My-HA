@@ -16,8 +16,7 @@ substitutions:
   voice_assist_error_phase_id: '11'
   # Change this to true in case you ahve a hidden SSID at home.
   hidden_ssid: "false"
-
-   # Substitutions for audio files
+  # Substitutions for audio files
   mute_switch_on_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_on.flac
   mute_switch_off_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_off.flac
   timer_finished_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
@@ -36,17 +35,14 @@ esphome:
   friendly_name: reSpeaker XVF3800 Assistant
   project:
     name: formatbce.Respeaker XVF3800 Satellite
-    version: 2025.12.1
-  min_version: 2025.12.0
+    version: 2026.3.0
+  min_version: 2026.3.0
   on_boot:
     - priority: 375
       then:
         - sensor.template.publish:
             id: next_timer
             state: -1
-        - lambda: |-
-            // 从实体读取DOA稳定性持续时间设置
-            id(doa_stable_duration_required) = (uint32_t)id(doa_stable_duration).state;
         # Run the script to refresh the LED status
         - script.execute: control_leds
         # If after 10 minutes, the device is still initializing (It did not yet connect to Home Assistant), turn off the init_in_progress variable and run the script to refresh the LED status
@@ -60,6 +56,10 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
+            auto call = id(alarm_action).make_call();
+            call.set_option(id(saved_alarm_action));
+            call.perform();
+        - lambda: |-
             setenv("TZ", id(saved_time_zone).c_str(), 1);
             tzset();
 
@@ -70,7 +70,9 @@ esp32:
   flash_size: 8MB
   framework:
     type: esp-idf
-    version: 5.5.1
+    version: recommended
+    components:
+      - espressif/esp-nn==1.1.2 # TODO remove this when MWW stops failing
     sdkconfig_options:
       CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
@@ -88,6 +90,20 @@ esp32:
       CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
       CONFIG_MBEDTLS_SSL_PROTO_TLS1_3: "y"  # TLS1.3 support isn't enabled by default in IDF 5.1.5
 
+wifi:
+  id: wifi_id
+  fast_connect: ${hidden_ssid}
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Add power management and connection optimizations
+  power_save_mode: none  # Disable power saving for better performance
+  reboot_timeout: 10min  # Prevent unnecessary reboots
+  on_connect:
+    - lambda: id(improv_ble_in_progress) = false;
+    - script.execute: control_leds
+  on_disconnect:
+    - script.execute: control_leds
+
 network:
   enable_ipv6: true
 
@@ -101,10 +117,7 @@ logger:
     i2s_audio: WARN
     respeaker_xvf3800: INFO
 
-# Enable Home Assistant API
 api:
-  encryption:
-    key: "O2aRAd1A5S8Wa4YEI9jgN/rJjBIafvxfHX2NIS4vtOY="
   id: api_id
   actions:
     - action: set_led_color
@@ -126,39 +139,24 @@ api:
     - action: stop_va
       then:
         - voice_assistant.stop
+    - action: set_time_zone
+      variables:
+        posix_time_zone: string
+      then:
+        - lambda: |-
+            setenv("TZ", posix_time_zone.c_str(), 1);
+            tzset();
+            id(saved_time_zone) = posix_time_zone;
+            id(publish_current_time).execute();
   on_client_connected:
     - script.execute: control_leds
   on_client_disconnected:
     - script.execute: control_leds
 
-# Uncomment this, if you have problems with text-to-speech because of Home Assistant HTTPS internal URL
-# http_request:
-#   verify_ssl: false
-
 ota:
   - platform: esphome
-    password: "96d17784176918b75633995719ed957d"
-
-wifi:
-  id: wifi_id
-  fast_connect: ${hidden_ssid}
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # Add power management and connection optimizations
-  power_save_mode: none # Disable power saving for better performance
-  reboot_timeout: 10min # Prevent unnecessary reboots
-  on_connect:
-    - lambda: id(improv_ble_in_progress) = false;
-    - script.execute: control_leds
-  on_disconnect:
-    - script.execute: control_leds
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
-  ap:
-    ssid: "Xvf3800 Fallback Hotspot"
-    password: "v2NFa73mX6OG"
-
-captive_portal:
+    id: ota_esphome
+    password: !secret ota_password
 
 i2c:
   - id: internal_i2c
@@ -170,7 +168,7 @@ i2c:
 psram:
   mode: octal
   speed: 80MHz
-  ignore_not_found: false # The VPE has PSRAM, so this is safe. Allows configuring WiFi driver to use more resources (done automatically by the speaker media player)
+  ignore_not_found: false  # The VPE has PSRAM, so this is safe. Allows configuring WiFi driver to use more resources (done automatically by the speaker media player)
 
 globals:
   - id: user_led_ring_color_r
@@ -219,11 +217,14 @@ globals:
     type: int
     restore_value: no
     initial_value: ${voice_assist_not_ready_phase_id}
-  # Global variable for time zone
   - id: saved_time_zone
     type: std::string
     restore_value: yes
-    initial_value: '"CST-8"'
+    initial_value: '"UTC0"'
+  - id: saved_alarm_action
+    type: std::string
+    restore_value: yes
+    initial_value: '"Play sound"'
   # Global variable storing the first active timer
   - id: first_active_timer
     type: voice_assistant::Timer
@@ -254,36 +255,43 @@ globals:
     type: float
     restore_value: no
     initial_value: '0.0'
-  # Global variables for DOA stability control
-  - id: last_stable_doa_position
-    type: int
+  - id: continuous_conversation_session_active
+    type: bool
     restore_value: no
-    initial_value: '-1'
-  - id: doa_first_detection_time
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-  - id: pending_doa_position
-    type: int
-    restore_value: no
-    initial_value: '-1'
-  - id: doa_stable_duration_required
-    type: uint32_t
-    restore_value: no
-    initial_value: '750'  # 750ms = 0.75秒，可调节范围500-1000ms，会从实体doa_stable_duration读取
+    initial_value: 'false'
 
 # Time sync from Home Assistant
 time:
   - platform: homeassistant
     id: homeassistant_time
+    on_time:
+      # Every 1 minute
+      - seconds: 0
+        then:
+          - script.execute: check_alarm
     on_time_sync:
       - script.execute: publish_current_time
+
+datetime:
+  # schedule the alarm time from Home Assistant
+  - platform: template
+    icon: mdi:bell-ring
+    name: "Alarm time"
+    id: alarm_time
+    type: time
+    initial_value: "00:00:00"
+    restore_value: true
+    optimistic: true
+    internal: false
+    set_action:
+      then:
+        - switch.turn_on: alarm_on
 
 switch:
   # Mute Sound Switch.
   - platform: template
     id: mute_sound
-    name: Mute/unmute sound
+    name: Mute-unmute sound
     icon: "mdi:bullhorn"
     entity_category: config
     optimistic: true
@@ -296,6 +304,20 @@ switch:
     entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: continuous_conversation
+    name: Continuous conversation
+    icon: "mdi:account-voice"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_off_action:
+      - lambda: id(continuous_conversation_session_active) = false;
+      - if:
+          condition:
+            voice_assistant.is_running:
+          then:
+            - voice_assistant.stop:
   # Internal switch to track when a timer is ringing on the device.
   - platform: template
     id: timer_ringing
@@ -306,15 +328,15 @@ switch:
       # Disable stop wake word
       - micro_wake_word.disable_model: stop
       - script.execute: disable_repeat
-      # Stop any current annoucement (ie: stop the timer ring mid playback)
+      # Stop any current announcement (ie: stop the timer ring mid playback)
       - if:
           condition:
             media_player.is_announcing:
               id: external_media_player
           then:
             media_player.stop:
-              id: external_media_player
               announcement: true
+              id: external_media_player
       # Set back ducking ratio to zero
       - mixer_speaker.apply_ducking:
           id: media_mixing_input
@@ -337,6 +359,13 @@ switch:
       # If 15 minutes have passed and the timer is still ringing, stop it.
       - delay: 15min
       - switch.turn_off: timer_ringing
+  # Defines if alarm is active
+  - platform: template
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    id: alarm_on
+    icon: mdi:bell-badge
+    name: "Alarm on"
 
 binary_sensor:
 
@@ -353,34 +382,6 @@ number:
     step: 0.05
     initial_value: 0.8
     mode: slider
-  - platform: template
-    id: doa_sensitivity
-    name: "DOA Sensitivity"
-    icon: mdi:antenna
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    min_value: 1
-    max_value: 10
-    step: 1
-    initial_value: 3
-    mode: slider
-  - platform: template
-    id: doa_stable_duration
-    name: "DOA Stable Duration"
-    icon: mdi:timer-outline
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    min_value: 500
-    max_value: 1000
-    step: 50
-    initial_value: 750
-    unit_of_measurement: "ms"
-    mode: slider
-    on_value:
-      - lambda: |-
-          id(doa_stable_duration_required) = (uint32_t)x;
 
 sensor:
   - platform: template
@@ -392,67 +393,6 @@ sensor:
     unit_of_measurement: s
     icon: "mdi:timer"
     accuracy_decimals: 0
-  - platform: template
-    id: doa_angle
-    name: "DOA Angle"
-    unit_of_measurement: "°"
-    icon: "mdi:compass"
-    accuracy_decimals: 0
-    update_interval: 3s
-    lambda: |-
-      if (id(beam_direction).has_state()) {
-        int led_position = ((int)id(beam_direction).state + 6) % 12;
-        float angle = led_position * 30.0f;
-        return angle;
-      } else {
-        return 0.0f;
-      }
-  # 系统健康传感器
-  - platform: uptime
-    name: "Uptime"
-    id: uptime_sensor
-    entity_category: diagnostic
-    icon: mdi:clock-outline
-  - platform: wifi_signal
-    name: "WiFi Signal"
-    id: wifi_signal_sensor
-    entity_category: diagnostic
-    icon: mdi:wifi
-    update_interval: 60s
-  - platform: template
-    name: "Free Heap"
-    id: free_heap_sensor
-    unit_of_measurement: "kB"
-    icon: mdi:memory
-    entity_category: diagnostic
-    accuracy_decimals: 1
-    update_interval: 60s
-    lambda: |-
-      return heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024.0;
-  - platform: template
-    name: "Heap Usage"
-    id: heap_usage_sensor
-    unit_of_measurement: "%"
-    icon: mdi:memory
-    entity_category: diagnostic
-    accuracy_decimals: 1
-    update_interval: 60s
-    lambda: |-
-      size_t free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-      size_t total = heap_caps_get_total_size(MALLOC_CAP_8BIT);
-      return ((total - free) * 100.0) / total;
-  # DOA原始位置传感器（用于调试）
-  - platform: template
-    name: "DOA Raw Position"
-    id: doa_raw_position
-    icon: mdi:compass-outline
-    entity_category: diagnostic
-    accuracy_decimals: 0
-    update_interval: 3s
-    disabled_by_default: true
-    lambda: |-
-      return id(beam_direction).has_state() ?
-        (float)id(beam_direction).state : 0.0;
 
 text_sensor:
   - platform: template
@@ -460,38 +400,10 @@ text_sensor:
     name: "Next timer name"
     icon: "mdi:timer"
     disabled_by_default: true
-  # WiFi IP 地址文本传感器
   - platform: template
-    name: "WiFi IP"
-    id: wifi_ip_text
-    icon: mdi:ip-network
-    entity_category: diagnostic
-    update_interval: 60s
-    lambda: |-
-      auto ips = id(wifi_id).get_ip_addresses();
-      if (!ips.empty()) {
-        return ips[0].str();
-      }
-      return {"未连接"};
-  # 设备状态摘要
-  - platform: template
-    name: "Device Status"
-    id: device_status
-    icon: mdi:information-outline
-    entity_category: diagnostic
-    update_interval: 60s
-    lambda: |-
-      if (id(respeaker).is_failed()) {
-        return {"Respeaker 初始化失败"};
-      } else if (!id(wifi_id).is_connected()) {
-        return {"WiFi 未连接"};
-      } else if (!id(api_id).is_connected()) {
-        return {"HA API 未连接"};
-      } else if (id(init_in_progress)) {
-        return {"初始化中"};
-      } else {
-        return {"正常运行"};
-      }
+    name: "Current device time"
+    id: current_time
+    icon: mdi:clock
 
 interval:
   - interval: 50ms
@@ -551,7 +463,7 @@ script:
           } else {
             id(last_led_update_time) = millis(); // Reset timer for smooth animation start
           }
-          
+
   # Individual update scripts for each animated effect
   - id: update_breathe_effect
     then:
@@ -734,7 +646,7 @@ script:
       - lambda: |-
           constexpr int NUM_LEDS = 12;
           static int tick_index = 0;
-          
+
           uint32_t now = millis();
           // Only update tick position every 100ms to reduce I2C traffic
           static uint32_t last_tick_update = 0;
@@ -742,13 +654,13 @@ script:
             tick_index = (tick_index - 1 + NUM_LEDS) % NUM_LEDS;
             last_tick_update = now;
           }
-          
+
           uint32_t colors[NUM_LEDS] = {0};
           uint32_t seconds_left = id(first_active_timer).seconds_left;
           uint32_t total_seconds = id(first_active_timer).total_seconds;
 
           float timer_ratio = (float)NUM_LEDS * seconds_left / std::max(total_seconds, (uint32_t)1);
-          
+
           float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
 
           for (int i = 0; i < NUM_LEDS; i++) {
@@ -780,14 +692,14 @@ script:
               colors[6] = mute_color;
             } else {
               float num_leds_on = volume * NUM_LEDS;
-              float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
+              float master_brightness = id(user_led_ring_brightness).state;
 
               for (int i = 0; i < NUM_LEDS; i++) {
                 float brightness = clamp(num_leds_on - i, 0.0f, 1.0f);
                 if (brightness > 0.0f) {
-                  uint8_t r = (uint8_t)(id(effect_color_r) * brightness * master_brightness);
-                  uint8_t g = (uint8_t)(id(effect_color_g) * brightness * master_brightness);
-                  uint8_t b = (uint8_t)(id(effect_color_b) * brightness * master_brightness);
+                  uint8_t r = (uint8_t)(id(user_led_ring_color_r) * brightness * master_brightness);
+                  uint8_t g = (uint8_t)(id(user_led_ring_color_g) * brightness * master_brightness);
+                  uint8_t b = (uint8_t)(id(user_led_ring_color_b) * brightness * master_brightness);
                   colors[i] = (r << 16) | (g << 8) | b;
                 }
               }
@@ -807,87 +719,58 @@ script:
           float dt = (now - id(last_led_update_time)) / 1000.0f;
           id(last_led_update_time) = now;
 
-          // Initialize current_pos from animated position
-          float current_pos = id(animated_beam_position);
-
           if (id(beam_direction).has_state()) {
-            // DOA stability filtering logic - 基于持续时间的确认机制
-            int new_doa_position = (int)id(beam_direction).state;
-            int threshold = (int)id(doa_sensitivity).state;
+            // CORRECTING THE OFFSET: add 5 from the sensor reading
+            float target_pos = ((int)id(beam_direction).state + 5) % NUM_LEDS;
+            float current_pos = id(animated_beam_position);
 
-            bool position_changed = false;
+            // Calculate the shortest path around the circle
+            float diff = target_pos - current_pos;
+            if (diff > NUM_LEDS / 2.0f) {
+              diff -= NUM_LEDS;
+            } else if (diff < -NUM_LEDS / 2.0f) {
+              diff += NUM_LEDS;
+            }
 
-            if (id(last_stable_doa_position) == -1) {
-              // 首次读取，初始化并立即显示
-              id(last_stable_doa_position) = new_doa_position;
-              id(pending_doa_position) = new_doa_position;
-              id(doa_first_detection_time) = now;
-              position_changed = true;
-            } else if (new_doa_position == id(pending_doa_position)) {
-              // 新位置持续保持，检查是否达到持续时间要求
-              uint32_t duration_ms = now - id(doa_first_detection_time);
-              if (duration_ms >= id(doa_stable_duration_required)) {
-                // 达到稳定性要求，更新LED
-                id(last_stable_doa_position) = new_doa_position;
-                position_changed = true;
-              }
+            // Move current position towards target
+            if (abs(diff) > 0.01f) {
+              float move_speed = diff / TRANSITION_DURATION;
+              current_pos += move_speed * dt;
             } else {
-              // 检测到新的不同位置，开始新的稳定性计时
-              id(pending_doa_position) = new_doa_position;
-              id(doa_first_detection_time) = now;
+              current_pos = target_pos;
             }
 
-            if (position_changed) {
-              // No offset correction - use raw sensor value
-              float target_pos = ((int)id(beam_direction).state + 5) % NUM_LEDS;
+            // Handle wrap-around for the animated position
+            if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
+            if (current_pos < 0.0f) current_pos += NUM_LEDS;
 
-              // Calculate the shortest path around the circle
-              float diff = target_pos - current_pos;
-              if (diff > NUM_LEDS / 2.0f) {
-                diff -= NUM_LEDS;
-              } else if (diff < -NUM_LEDS / 2.0f) {
-                diff += NUM_LEDS;
+            id(animated_beam_position) = current_pos;
+
+            // Render the smoothed beam
+            float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
+
+            for (int i = 0; i < NUM_LEDS; i++) {
+              // Calculate circular distance from current LED to the animated position
+              float dist = abs(i - current_pos);
+              if (dist > NUM_LEDS / 2.0f) {
+                dist = NUM_LEDS - dist;
               }
 
-              // Move current position towards target
-              if (abs(diff) > 0.01f) {
-                float move_speed = diff / TRANSITION_DURATION;
-                current_pos += move_speed * dt;
-              } else {
-                current_pos = target_pos;
+              // Calculate brightness based on distance (linear falloff)
+              float brightness_factor = 1.0f - (dist / (FADE_LEDS + 1.0f));
+              brightness_factor = std::max(0.0f, brightness_factor);
+
+              if (brightness_factor > 0.0f) {
+                float final_brightness = brightness_factor * master_brightness;
+                uint8_t r = (uint8_t)(id(effect_color_r) * final_brightness);
+                uint8_t g = (uint8_t)(id(effect_color_g) * final_brightness);
+                uint8_t b = (uint8_t)(id(effect_color_b) * final_brightness);
+                colors[i] = (r << 16) | (g << 8) | b;
               }
-
-              // Handle wrap-around for the animated position
-              if (current_pos >= NUM_LEDS) current_pos -= NUM_LEDS;
-              if (current_pos < 0.0f) current_pos += NUM_LEDS;
-
-              id(animated_beam_position) = current_pos;
-            }
-          }
-
-          // Render the smoothed beam with 3 LED fade effect
-          float master_brightness = id(user_led_ring_brightness).state * id(effect_brightness);
-          for (int i = 0; i < NUM_LEDS; i++) {
-            // Calculate circular distance from current LED to the animated position
-            float dist = abs(i - current_pos);
-            if (dist > NUM_LEDS / 2.0f) {
-              dist = NUM_LEDS - dist;
-            }
-
-            // Calculate brightness based on distance (linear falloff)
-            float brightness_factor = 1.0f - (dist / (FADE_LEDS + 1.0f));
-            brightness_factor = std::max(0.0f, brightness_factor);
-
-            if (brightness_factor > 0.0f) {
-              float final_brightness = brightness_factor * master_brightness;
-              uint8_t r = (uint8_t)(id(effect_color_r) * final_brightness);
-              uint8_t g = (uint8_t)(id(effect_color_g) * final_brightness);
-              uint8_t b = (uint8_t)(id(effect_color_b) * final_brightness);
-              colors[i] = (r << 16) | (g << 8) | b;
             }
           }
           id(respeaker).set_led_ring(colors);
-          
+
   # Master script controlling the LEDs, based on different conditions : initialization in progress, wifi and api connected and voice assistant phase.
   # For the sake of simplicity and re-usability, the script calls child scripts defined below.
   # This script will be called every time one of these conditions is changing.
@@ -904,7 +787,7 @@ script:
           static bool last_timer_active = false;
           static bool last_improv_ble = false;
           static bool last_init_progress = false;
-          
+
           bool respeaker_failed = id(respeaker).is_failed();
           bool wifi_connected = id(wifi_id).is_connected();
           bool api_connected = id(api_id).is_connected();
@@ -912,7 +795,7 @@ script:
           bool new_timer_ringing = id(timer_ringing).state;
           bool improv_ble = id(improv_ble_in_progress);
           bool init_progress = id(init_in_progress);
-          
+
           // Only update if something actually changed
           bool needs_update = (
             respeaker_failed != last_respeaker_failed ||
@@ -923,9 +806,9 @@ script:
             improv_ble != last_improv_ble ||
             init_progress != last_init_progress
           );
-          
+
           if (!needs_update) return;
-          
+
           // Update cache
           last_respeaker_failed = respeaker_failed;
           last_wifi_connected = wifi_connected;
@@ -934,18 +817,18 @@ script:
           last_timer_ringing = new_timer_ringing;
           last_improv_ble = improv_ble;
           last_init_progress = init_progress;
-          
+
           if (respeaker_failed) {
             id(control_leds_respeaker_startup_failed).execute();
             return;
           }
-          
+
           // Only check timers if we need to
           id(check_if_timers_active).execute();
           if (id(is_timer_active)){
             id(fetch_first_active_timer).execute();
           }
-          
+
           // Continue with existing logic...
           if (improv_ble) {
             id(control_leds_improv_ble_state).execute();
@@ -1038,10 +921,7 @@ script:
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
       - lambda: |
-          // Initialize animated position when starting waiting phase
-          if (id(beam_direction).has_state()) {
-            id(animated_beam_position) = id(beam_direction).state;
-          }
+          id(animated_beam_position) = id(beam_direction).state;
       - script.execute:
           id: led_set_effect
           effect: "led_beam"
@@ -1120,6 +1000,9 @@ script:
       - delay: 2s
       - lambda: |-
           id(volume_display_active) = false;
+          // Turn off LEDs - any active effect will take over on next interval tick
+          uint32_t colors[12] = {0};
+          id(respeaker).set_led_ring(colors);
 
   # Script executed when the timer is ringing, to control the LEDs
   - id: control_leds_timer_ringing
@@ -1148,19 +1031,14 @@ script:
   # Script executed when the voice assistant is idle (waiting for a wake word)
   - id: control_leds_voice_assistant_idle_phase
     then:
-      - lambda: |
-          // Initialize animated position when starting idle phase
-          if (id(beam_direction).has_state()) {
-            id(animated_beam_position) = id(beam_direction).state;
-          }
       - script.execute:
           id: led_set_effect
-          effect: "led_beam"
-          r: !lambda return id(user_led_ring_color_r);
-          g: !lambda return id(user_led_ring_color_g);
-          b: !lambda return id(user_led_ring_color_b);
+          effect: "off"
+          r: 0.0
+          g: 0.0
+          b: 0.0
           speed: 0.0
-          brightness: 0.4
+          brightness: 0.0
 
   # Script executed when the timer is ringing, to playback sounds.
   - id: ring_timer
@@ -1178,8 +1056,11 @@ script:
       - media_player.repeat_one:
           id: external_media_player
           announcement: true
-      - lambda: |-
-          id(external_media_player)->set_playlist_delay_ms(1, 500);
+      - speaker_source.set_playlist_delay:
+          id: external_media_player
+          pipeline: announcement
+          delay: 500ms
+
   # Script execute when the timer is done ringing, to disable repeat mode.
   - id: disable_repeat
     then:
@@ -1187,13 +1068,16 @@ script:
       - media_player.repeat_off:
           id: external_media_player
           announcement: true
-      - lambda: |-
-          id(external_media_player)->set_playlist_delay_ms(1, 0);
+      - speaker_source.set_playlist_delay:
+          id: external_media_player
+          pipeline: announcement
+          delay: 0ms
 
   # Script executed when we want to play sounds on the device.
   - id: play_sound
     parameters:
       priority: bool
+      # sound_file: "audio::AudioFile*"
       sound_file: string
     then:
       - if:
@@ -1207,31 +1091,20 @@ script:
           if ( (id(external_media_player).state != media_player::MediaPlayerState::MEDIA_PLAYER_STATE_ANNOUNCING ) || priority) {
             id(external_media_player)
               ->make_call()
-              .set_media_url("file://" + sound_file)
+              .set_media_url("audio-file://" + sound_file)
               .set_announcement(true)
               .perform();
           }
 
   # Script used to fetch the first active timer (Stored in global first_active_timer)
   - id: fetch_first_active_timer
-    mode: single
     then:
       - lambda: |
-          static uint32_t last_fetch_time = 0;
-          uint32_t now = millis();
-          
-          // Only fetch every 500ms to reduce overhead
-          if (now - last_fetch_time < 500) return;
-          last_fetch_time = now;
-          
-          const auto timers = id(va).get_timers();
-          if (timers.empty()) return;
-          
-          auto output_timer = timers.begin()->second;
-          for (auto &iterable_timer : timers) {
-            if (iterable_timer.second.is_active && 
-                iterable_timer.second.seconds_left <= output_timer.seconds_left) {
-              output_timer = iterable_timer.second;
+          const auto &timers = id(va).get_timers();
+          auto output_timer = *timers.begin();
+          for (const auto &timer : timers) {
+            if (timer.is_active && timer.seconds_left <= output_timer.seconds_left) {
+              output_timer = timer;
             }
           }
           id(first_active_timer) = output_timer;
@@ -1240,13 +1113,11 @@ script:
   - id: check_if_timers_active
     then:
       - lambda: |
-          const auto timers = id(va).get_timers();
+          const auto &timers = id(va).get_timers();
           bool output = false;
-          if (timers.size() > 0) {
-            for (auto &iterable_timer : timers) {
-              if(iterable_timer.second.is_active) {
-                output = true;
-              }
+          for (const auto &timer : timers) {
+            if (timer.is_active) {
+              output = true;
             }
           }
           id(is_timer_active) = output;
@@ -1257,6 +1128,10 @@ script:
   #   This allows us to prevent having the deactivation of the stop word before its own activation.
   - id: activate_stop_word_once
     then:
+      - wait_until:
+          condition:
+            media_player.is_announcing:
+              id: external_media_player
       - delay: 1s
       # Enable stop wake word
       - if:
@@ -1274,6 +1149,40 @@ script:
                 then:
                   - micro_wake_word.disable_model: stop
 
+  - id: check_alarm
+    then:
+      - lambda: |-
+          id(publish_current_time).execute();
+          // Check alarm
+          if (id(alarm_on).state) {
+            auto alarm_dt = id(alarm_time).state_as_esptime();
+            auto time_now = id(homeassistant_time).now();
+
+            if (time_now.hour == alarm_dt.hour && time_now.minute == alarm_dt.minute) {
+              auto action = id(alarm_action).current_option();
+              if (action == "Play sound") {
+                id(timer_ringing).turn_on();
+              } else if (action == "Send event") {
+                id(send_alarm_event).execute();
+              } else if (action == "Sound and event") {
+                id(timer_ringing).turn_on();
+                id(send_alarm_event).execute();
+              }
+            }
+          }
+
+  - id: send_wake_word_event
+    parameters:
+      wake_word: string
+    then:
+      - homeassistant.event:
+          event: esphome.wake_word_detected
+          data:
+            wake_word: !lambda return wake_word;
+  - id: send_alarm_event
+    then:
+      - homeassistant.event:
+          event: esphome.alarm_ringing
   - id: send_tts_uri_event
     parameters:
       tts_uri: string
@@ -1300,29 +1209,30 @@ script:
 
           // Only publish if time actually changed
           if (current_time_string != last_time_string) {
+            id(current_time).publish_state(current_time_string);
             last_time_string = current_time_string;
           }
 
 i2s_audio:
   - id: i2s_output
-    i2s_lrclk_pin: 
+    i2s_lrclk_pin:
       number: GPIO7
       allow_other_uses: true
-    i2s_bclk_pin:  
+    i2s_bclk_pin:
       number: GPIO8
       allow_other_uses: true
-    # i2s_mclk_pin:  
+    # i2s_mclk_pin:
     #   number: GPIO9
     #   allow_other_uses: true
 
   - id: i2s_input
-    i2s_lrclk_pin:  
+    i2s_lrclk_pin:
       number: GPIO7
       allow_other_uses: true
-    i2s_bclk_pin:  
+    i2s_bclk_pin:
       number: GPIO8
       allow_other_uses: true
-    # i2s_mclk_pin:  
+    # i2s_mclk_pin:
     #   number: GPIO9
     #   allow_other_uses: true
 
@@ -1337,7 +1247,7 @@ microphone:
     i2s_mode: secondary
     i2s_audio_id: i2s_input
     channel: stereo
-      
+
 speaker:
   # Hardware speaker output
   - platform: i2s_audio
@@ -1365,7 +1275,7 @@ speaker:
       - id: media_mixing_input
         timeout: never
 
-  # Vritual speakers to resample each pipelines' audio, if necessary, as the mixer speaker requires the same sample rate
+  # Virtual speakers to resample each pipelines' audio, if necessary, as the mixer speaker requires the same sample rate
   - platform: resampler
     id: announcement_resampling_speaker
     output_speaker: announcement_mixing_input
@@ -1377,85 +1287,65 @@ speaker:
     sample_rate: 48000
     bits_per_sample: 16
 
-# SendSpin components - 用于连接 Home Assistant 媒体播放和群组控制
-# 需要最新的 ESPHome 版本支持（2025.1+）
 sendspin:
   id: sendspin_hub
-  task_stack_in_psram: true
-  kalman_process_error: 0.01
+  task_stack_in_psram: false
 
-# HTTP 请求组件 - 用于从 URL 播放音频
 http_request:
+# Uncomment this, if you have problems with text-to-speech because of Home Assistant HTTPS internal URL
+#   verify_ssl: false
+  buffer_size_rx: 2048  # Reduces CPU load when streaming audio
 
-# 媒体源配置 - 支持多种音频输入源
+audio_file:
+  - id: mute_switch_on_sound
+    file: ${mute_switch_on_sound_file}
+  - id: mute_switch_off_sound
+    file: ${mute_switch_off_sound_file}
+  - id: timer_finished_sound
+    file: ${timer_finished_sound_file}
+  - id: wake_word_triggered_sound
+    file: ${wake_word_triggered_sound_file}
+  - id: error_cloud_expired
+    file: ${error_cloud_expired_sound_file}
+
 media_source:
-  - platform: sendspin
-    id: sendspin_source
+  - platform: audio_file
+    id: audio_file_announcement_source
   - platform: http_request
-    id: http_source
+    id: http_announcement_source
+    buffer_size: 250000
+  - platform: http_request
+    id: http_media_source
     buffer_size: 500000
-  - platform: file
-    id: file_source
-    files:
-      - id: mute_switch_on_sound
-        file: ${mute_switch_on_sound_file}
-      - id: mute_switch_off_sound
-        file: ${mute_switch_off_sound_file}
-      - id: timer_finished_sound
-        file: ${timer_finished_sound_file}
-      - id: wake_word_triggered_sound
-        file: ${wake_word_triggered_sound_file}
-      - id: error_cloud_expired
-        file: ${error_cloud_expired_sound_file}
+  - platform: sendspin
+    id: sendspin_media_source
+    fixed_delay: 480 microseconds  # The AIC3204 DAC used, as configured, on the VPE delays audio by 480 microseconds
 
 media_player:
-  # SendSpin 群组播放器 - 用于控制其他 Home Assistant 媒体播放器
   - platform: sendspin
     id: sendspin_group_media_player
-    name: "Group Media Player"
-  # 主媒体播放器 - 使用 speaker_source 平台支持多种媒体源
   - platform: speaker_source
     id: external_media_player
     name: Media Player
-    internal: False
-    announcement_speaker: announcement_resampling_speaker
-    media_speaker: media_resampling_speaker
     announcement_pipeline:
       format: FLAC     # FLAC is the least processor intensive codec
       num_channels: 1  # Stereo audio is unnecessary for announcements
       sample_rate: 48000
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
     media_pipeline:
       format: FLAC     # FLAC is the least processor intensive codec
       num_channels: 2
       sample_rate: 48000
-    # 支持的媒体源
-    sources:
-      - file_source
-      - http_source
-      - sendspin_source
+      speaker: media_resampling_speaker
+      sources:
+        - http_media_source
+        - sendspin_media_source
     volume_increment: 0.05
     volume_min: 0.0
     volume_max: 1.0
-    on_announcement:
-      - mixer_speaker.apply_ducking:
-          id: media_mixing_input
-          decibel_reduction: 20
-          duration: 0.0s
-    on_state:
-      if:
-        condition:
-          and:
-            - switch.is_off: timer_ringing
-            - not:
-                voice_assistant.is_running:
-            - not:
-                media_player.is_announcing:
-                    id: external_media_player
-        then:
-          - mixer_speaker.apply_ducking:
-              id: media_mixing_input
-              decibel_reduction: 0
-              duration: 1.0s
     on_mute:
       - delay: 100ms  # Debounce
       - script.execute: control_leds_volume_changed
@@ -1469,10 +1359,27 @@ media_player:
         then:
           - delay: 100ms  # Debounce
           - script.execute: control_leds_volume_changed
-
+    on_announcement:
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20
+          duration: 0.0s
+    on_state:
+      if:
+        condition:
+          and:
+            - switch.is_off: timer_ringing
+            - not:
+                voice_assistant.is_running:
+            - not:
+                media_player.is_announcing: external_media_player
+        then:
+          - mixer_speaker.apply_ducking:
+              id: media_mixing_input
+              decibel_reduction: 0
+              duration: 1.0s
 
 external_components:
-  # 保留 formatBCE 的 i2s_audio 组件以支持 reSpeaker
   - source:
       type: git
       url: https://github.com/formatBCE/esphome
@@ -1482,51 +1389,25 @@ external_components:
     refresh: 0s
   - source:
       type: git
-      url: https://github.com/jerryyip/Respeaker-XVF3800-ESPHome-integration
+      url: https://github.com/formatBCE/Respeaker-XVF3800-ESPHome-integration
       ref: main
     components:
       - respeaker_xvf3800
       - aic3104
     refresh: 0s
-  # SendSpin 相关组件 - 需要特定 PR 版本
-  # 这些 PR 将在 ESPHome 2025.1+ 版本中合并，但现在需要从特定 commit 引入
   - source:
-      # https://github.com/esphome/esphome/pull/12253 - mixer 组件改进
+      # https://github.com/esphome/esphome/pull/14933
+      type: git
+      url: https://github.com/kahrendt/esphome
+      ref: 7a6cf5c8472b7e2fa18ee0fc314f66a80d249e32
+    components: [const, media_source, sendspin]
+  - source:
+      # https://github.com/esphome/esphome/pull/12429
       type: git
       url: https://github.com/esphome/esphome
-      ref: 0fe230114c80b6d3378f04c777baadee178e40ad
-    components: [mixer]
-  - source:
-      # https://github.com/esphome/esphome/pull/12254 - resampler 组件
-      type: git
-      url: https://github.com/esphome/esphome
-      ref: 1ab4b990092ae063a16cb1511a188c536fdb336e
-    components: [resampler]
-  - source:
-      # https://github.com/esphome/esphome/pull/12256 - audio 组件改进
-      type: git
-      url: https://github.com/esphome/esphome
-      ref: 047ba60f01af84513f8d5aabaa2a53074facee8f
-    components: [audio]
-  - source:
-      # https://github.com/esphome/esphome/pull/12258 - media_player 组件改进
-      type: git
-      url: https://github.com/esphome/esphome
-      ref: bff22983a390352360796f8e1363127e0cd1f898
-    components: [media_player]
-  - source:
-      # https://github.com/esphome/esphome/pull/12284 - sendspin 和 mdns 组件
-      type: git
-      url: https://github.com/esphome/esphome
-      ref: aef3a4afd9c7186751fc9d097742325b3390572f
-    components: [mdns, sendspin]
-  - source:
-      # https://github.com/esphome/esphome/pull/12429 - file, http_request, media_source, speaker_source
-      type: git
-      url: https://github.com/esphome/esphome
-      ref: 627572d9aa0c372f4ca8adcbdaf68c1c2e65b84c
+      ref: ff8ce89556748509d7ee8724e12d9d43d3c8c1e8
     refresh: 0s
-    components: [file, http_request, media_source, speaker_source]
+    components: [http_request]
 
 respeaker_xvf3800:
   id: respeaker
@@ -1579,7 +1460,7 @@ micro_wake_word:
   microphone:
     microphone: i2s_mics
     channels: 1
-    #gain_factor: 2
+    # gain_factor: 4
   stop_after_detection: false
   models:
     - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
@@ -1602,9 +1483,9 @@ micro_wake_word:
         condition:
           switch.is_off: mic_mute_switch
         then:
-          # Show immediate visual feedback for wake word detection
-          - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-          - script.execute: control_leds_voice_assistant_waiting_for_command_phase
+          - script.execute:
+              id: send_wake_word_event
+              wake_word: !lambda return wake_word;
           # If a timer is ringing: Stop it, do not start the voice assistant (We can stop timer from voice!)
           - if:
               condition:
@@ -1626,10 +1507,11 @@ micro_wake_word:
                               id: external_media_player
                           then:
                             - media_player.stop:
-                                id: external_media_player
                                 announcement: true
+                                id: external_media_player
                           # Start the voice assistant and play the wake sound, if enabled
                           else:
+                            - lambda: id(continuous_conversation_session_active) = id(continuous_conversation).state;
                             - if:
                                 condition:
                                   switch.is_on: wake_sound
@@ -1645,6 +1527,7 @@ micro_wake_word:
 select:
   - platform: template
     name: "Wake word sensitivity"
+    id: wake_word_sensitivity
     optimistic: true
     initial_option: Slightly sensitive
     restore_value: true
@@ -1677,6 +1560,20 @@ select:
     name: Logger Level
     disabled_by_default: true
   - platform: template
+    optimistic: true
+    name: "Alarm action"
+    id: alarm_action
+    icon: mdi:bell-plus
+    options:
+      - "Play sound"
+      - "Send event"
+      - "Sound and event"
+    initial_option: "Play sound"
+    on_value:
+      then:
+        - lambda: |-
+            id(saved_alarm_action) = x;
+  - platform: template
     name: "LED Ring Color Preset"
     id: user_led_color_preset
     icon: "mdi:palette"
@@ -1686,7 +1583,7 @@ select:
     initial_option: "Custom"
     options:
       - "Purple"
-      - "Blue" 
+      - "Blue"
       - "Green"
       - "Yellow"
       - "Cyan"
@@ -1738,6 +1635,7 @@ voice_assistant:
   media_player: external_media_player
   micro_wake_word: mww
   use_wake_word: false
+  conversation_timeout: 300s
   noise_suppression_level: 0
   auto_gain: 0 dbfs
   volume_multiplier: 1
@@ -1751,11 +1649,12 @@ voice_assistant:
     - lambda: id(init_in_progress) = false;
     - micro_wake_word.start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - script.execute: control_leds_voice_assistant_idle_phase
+    - script.execute: control_leds
   on_client_disconnected:
     - voice_assistant.stop:
+    - lambda: id(continuous_conversation_session_active) = false;
     - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
-    - script.execute: control_leds_voice_assistant_not_ready_phase
+    - script.execute: control_leds
   on_error:
     # Only set the error phase if the error code is different than duplicate_wake_up_detected or stt-no-text-recognized
     # These two are ignored for a better user experience
@@ -1767,7 +1666,7 @@ voice_assistant:
             - lambda: return code != "stt-no-text-recognized";
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
-          - script.execute: control_leds_voice_assistant_error_phase
+          - script.execute: control_leds
     # If the error code is cloud-auth-failed, serve a local audio file guiding the user.
     - if:
         condition:
@@ -1782,16 +1681,16 @@ voice_assistant:
     - mixer_speaker.apply_ducking:
         id: media_mixing_input
         decibel_reduction: 20  # Number of dB quieter; higher implies more quiet, 0 implies full volume
-        duration: 0.0s         # The duration of the transition (default is no transition)
+        duration: 0.0s  # The duration of the transition (default is no transition)
   on_listening:
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-    - script.execute: control_leds_voice_assistant_waiting_for_command_phase
+    - script.execute: control_leds
   on_stt_vad_start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_listening_for_command_phase_id};
-    - script.execute: control_leds_voice_assistant_listening_for_command_phase
+    - script.execute: control_leds
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
-    - script.execute: control_leds_voice_assistant_thinking_phase
+    - script.execute: control_leds
   on_intent_progress:
     - if:
         condition:
@@ -1799,7 +1698,7 @@ voice_assistant:
           lambda: 'return !x.empty();'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - script.execute: control_leds_voice_assistant_replying_phase
+          - script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   on_tts_start:
@@ -1809,7 +1708,7 @@ voice_assistant:
           lambda: 'return id(voice_assistant_phase) != ${voice_assist_replying_phase_id};'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - script.execute: control_leds_voice_assistant_replying_phase
+          - script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   on_tts_end:
@@ -1839,7 +1738,21 @@ voice_assistant:
           - delay: 1s
     # Reset the voice assistant phase id and reset the LED animations.
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - script.execute: control_leds_voice_assistant_idle_phase
+    - script.execute: control_leds
+    - if:
+        condition:
+          and:
+            - switch.is_on: continuous_conversation
+            - lambda: return id(continuous_conversation_session_active);
+            - api.connected:
+            - switch.is_off: mic_mute_switch
+            - switch.is_off: timer_ringing
+            - lambda: return id(voice_assistant_phase) != ${voice_assist_error_phase_id};
+        then:
+          - delay: 200ms
+          - voice_assistant.start:
+        else:
+          - lambda: id(continuous_conversation_session_active) = false;
   on_timer_finished:
     - switch.turn_on: timer_ringing
     - lambda: |
@@ -1877,7 +1790,7 @@ voice_assistant:
     - script.execute: control_leds
   on_timer_tick:
     # Reduce LED updates - only every 5 seconds instead of every second
-    - lambda: | 
+    - lambda: |
         id(fetch_first_active_timer).execute();
         int seconds_left = id(first_active_timer).seconds_left;
         if (seconds_left % 5 == 0) {
@@ -1897,29 +1810,8 @@ button:
     id: restart_button
     name: "Restart"
     entity_category: config
-    disabled_by_default: false
+    disabled_by_default: true
     icon: "mdi:restart"
-  # LED动画测试按钮
-  - platform: template
-    name: "Test LED Animation"
-    id: test_led_button
-    icon: mdi:led-on
-    entity_category: diagnostic
-    on_press:
-      - lambda: |-
-          ESP_LOGI("LED", "Starting LED test animation...");
-      - script.execute:
-          id: led_set_effect
-          effect: "rainbow"
-          r: 255.0
-          g: 100.0
-          b: 0.0
-          speed: 0.5
-          brightness: 0.8
-      - delay: 5s
-      - lambda: |-
-          ESP_LOGI("LED", "LED test completed, restoring normal state...");
-      - script.execute: control_leds_voice_assistant_idle_phase
 
 debug:
   update_interval: 5s

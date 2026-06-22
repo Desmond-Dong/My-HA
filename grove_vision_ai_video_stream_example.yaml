@@ -1,0 +1,210 @@
+esphome:
+  name: grove_vision_ai_stream
+  friendly_name: Grove Vision AI V2 Stream
+  comment: "ESP32-S3 with video streaming support"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# PSRAM configuration (REQUIRED for video streaming)
+psram:
+  mode: octal      # Use octal mode for best performance
+  speed: 80MHz     # 80MHz for optimal speed
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "your_encryption_key_here"
+
+ota:
+  password: "your_ota_password_here"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none  # Important for streaming
+
+# Grove Vision AI V2 Component
+external_components:
+  - source:
+      type: local
+      path: ./grove_vision_ai
+    components: [ grove_vision_ai ]
+
+# UART configuration for Grove Vision AI V2
+uart:
+  - id: uart_bus
+    tx_pin: GPIO17
+    rx_pin: GPIO18
+    baud_rate: 921600
+    rx_buffer_size: 32768
+
+# Grove Vision AI V2 main component
+grove_vision_ai:
+  id: vision_ai
+  update_interval: 500ms
+
+# Web server (required for video streaming)
+web_server:
+  port: 80
+  auth:
+    username: admin
+    password: !secret web_server_password
+  include_internal: true
+
+# Video stream component (ESP32-S3 only)
+video_stream:
+  port: 8080
+
+# Binary sensors for detection events
+binary_sensor:
+  - platform: grove_vision_ai
+    name: "Motion Detected"
+    id: motion_sensor
+    min_confidence: 0.6
+    device_class: motion
+
+  - platform: grove_vision_ai
+    name: "Person Detected"
+    id: person_sensor
+    target_id: 0  # Assuming person is class ID 0
+    min_confidence: 0.7
+    device_class: presence
+
+  - platform: status
+    name: "Device Status"
+    id: status_sensor
+
+# Text sensor for detection results
+text_sensor:
+  - platform: grove_vision_ai
+    name: "Detection Results"
+    id: detection_results_text
+
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    ssid:
+      name: "Connected SSID"
+
+# Sensor for system information
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+  - platform: grove_vision_ai
+    name: "Detection Count"
+    id: detection_count_sensor
+
+# Switch for enabling/disabling streaming
+switch:
+  - platform: template
+    name: "Enable Streaming"
+    id: enable_streaming
+    optimistic: true
+    restore_state: true
+    on_turn_on:
+      - logger.log: "Streaming enabled"
+    on_turn_off:
+      - logger.log: "Streaming disabled"
+
+# Number for adjusting detection confidence
+number:
+  - platform: template
+    name: "Detection Confidence"
+    id: confidence_threshold
+    min_value: 0.1
+    max_value: 1.0
+    step: 0.05
+    initial_value: 0.6
+    optimistic: true
+    restore_value: true
+
+# Automations
+automation:
+  - alias: "Send notification on person detection"
+    trigger:
+      - platform: grove_vision_ai
+        on_detection:
+          target_id: 0  # Person
+          min_confidence: 0.7
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Person Detected!"
+          message: "A person was detected with confidence {{ trigger.score | round(2) }}"
+          data:
+            image: "http://{{ states('sensor.ip_address') }}:8080/stream"
+
+  - alias: "Log detection events"
+    trigger:
+      - platform: grove_vision_ai
+        on_detection:
+          min_confidence: 0.6
+    action:
+      - logger.log:
+          format: "Detection: target=%d, score=%.2f, bbox=(%d,%d,%d,%d)"
+          args: ['trigger.target_id', 'trigger.score', 'trigger.x', 'trigger.y', 'trigger.w', 'trigger.h']
+
+  - alias: "Take snapshot on high confidence detection"
+    trigger:
+      - platform: grove_vision_ai
+        on_detection:
+          min_confidence: 0.9
+    condition:
+      - condition: switch
+        entity_id: switch.enable_streaming
+    action:
+      - logger.log: "High confidence detection - taking snapshot"
+      - http_request.post:
+          url: http://127.0.0.1:8080/stream
+          # Note: Snapshot functionality would need to be implemented
+
+  - alias: "Alert on low WiFi signal"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.wifi_signal
+        below: -70
+    action:
+      - logger.log: "Low WiFi signal detected: {{ states('sensor.wifi_signal') }} dBm"
+      - service: notify.mobile_app
+        data:
+          title: "Low WiFi Signal"
+          message: "WiFi signal is weak: {{ states('sensor.wifi_signal') }} dBm"
+
+# Example: Camera integration for Home Assistant
+# This would require creating a custom camera component
+# camera:
+#   - platform: grove_vision_ai
+#     name: "Grove Vision AI"
+#     stream_source: !lambda "return String(\"http://\") + WiFi.localIP().toString() + String(\":8080/stream\");"
+
+# Time synchronization
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+# Display connection information on startup
+on_boot:
+  - priority: -100
+    then:
+      - logger.log:
+          format: "Grove Vision AI V2 Stream starting..."
+      - delay: 2s
+      - logger.log:
+          format: "Video stream available at: http://%s:8080/stream"
+          args: ['WiFi.localIP().toString().c_str()']
+      - logger.log:
+          format: "Detection results: http://%s:8080/stream/result"
+          args: ['WiFi.localIP().toString().c_str()']

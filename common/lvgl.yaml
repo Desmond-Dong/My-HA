@@ -1,0 +1,15 @@
+# LVGL Main Configuration
+# Includes: styles, navigation, pages
+packages:
+  lvgl_styles: !include styles/lvgl-styles.yaml
+  lvgl_sidebar: !include navigation/lvgl-sidebar.yaml
+  lvgl_pages: !include lvgl-pages.yaml
+
+lvgl:
+  on_boot:
+    - rx8130.read_time:
+    - script.execute: expand_nav_btn_click_area
+    - script.execute: nav_rail_update
+    - script.execute: sync_ha
+  rotation: 90
+  byte_order: little_endian

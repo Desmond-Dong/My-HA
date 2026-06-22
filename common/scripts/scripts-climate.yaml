@@ -1,0 +1,81 @@
+# Climate Scripts: AC Controls
+script:
+  - id: update_arc_color
+    parameters:
+      ac_mode_index: int
+    then:
+      - lambda: |-
+          switch ( ac_mode_index ) {
+            /* Heat/Cool */
+            case 0:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xFAE19D), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xFAE19D), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0xF5C23B), LV_PART_KNOB);
+              break;
+            /* Heat */
+            case 1:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xEBEBEB), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xEC7636), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0xEC7636), LV_PART_KNOB);
+              break;
+            /* Cool */
+            case 2:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0x4C96EE), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xEBEBEB), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0x4C96EE), LV_PART_KNOB);
+              break;
+            /* Dry */
+            case 3:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xF7CD98), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xF7CD98), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0xF09C31), LV_PART_KNOB);
+              break;
+            /* Fan */
+            case 4:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xABDDE8), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xABDDE8), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0x58BAD2), LV_PART_KNOB);
+              break;
+            /* Off */
+            case 5:
+            /* fallthrough */
+            default:
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xEBEBEB), LV_PART_MAIN);
+              lv_obj_set_style_arc_color(id(ac_arc), lv_color_hex(0xEBEBEB), LV_PART_INDICATOR);
+              lv_obj_set_style_outline_color(id(ac_arc), lv_color_hex(0x9E9E9E), LV_PART_KNOB);
+              break;
+          }
+  # This script was used on dropdown widget
+  # to set ac state (ON/OFF/COOL/HEAT, etc)
+  - id: set_ac_state
+    parameters:
+      ac_mode_idx: int
+    then:
+      - homeassistant.action:
+          action: climate.set_hvac_mode
+          data:
+            entity_id: ${climate_entity}
+            hvac_mode: !lambda return id(hvac_state_table)[ac_mode_idx];
+  - id: set_ac_fan_mode
+    parameters:
+      ac_fan_mode_idx: int
+    then:
+      - homeassistant.action:
+          action: climate.set_fan_mode
+          data:
+            entity_id: ${climate_entity}
+            fan_mode: !lambda return id(fan_modes_table)[ac_fan_mode_idx];
+  # This script was used on spinbox/arc widget
+  # to set the temperature to climate entity
+  # it doesn't turn on/off, use the dropdown instead
+  - id: set_ac_temp
+    parameters:
+      temp_value: float
+    then:
+      - homeassistant.action:
+          action: climate.set_temperature
+          data:
+            entity_id: ${climate_entity}
+            temperature: !lambda return temp_value;
+
+# sendspin script

@@ -1,0 +1,8 @@
+# Scripts - Master Include
+# Includes all script categories
+packages:
+  scripts_global: !include scripts/scripts-global.yaml
+  scripts_light: !include scripts/scripts-light.yaml
+  scripts_climate: !include scripts/scripts-climate.yaml
+  scripts_media: !include scripts/scripts-media.yaml
+  scripts_dashboard: !include scripts/scripts-dashboard.yaml
