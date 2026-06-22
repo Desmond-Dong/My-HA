@@ -1,0 +1,103 @@
+substitutions:
+  name: tab5-ha-hmi
+  friendly_name: M5Stack Tab5 Home Assistant HMI
+
+  startup_sound_file: Home_Connected # options are: Home_Connected or Home_Connected_Male
+  imagemodel: "Gwen" # options: Gwen, Alfred, etc.
+
+  imagewidth:  "720"
+  imageheight: "720"
+
+  screenwidth:  "1280"
+  screenheight: "780"
+
+  media_sample_rate: 48000
+
+  ui_phase_standby: "0"
+  ui_phase_player_controls: "1"
+  ui_phase_now_playing: "2"
+  ui_phase_playlist_menu: "3"
+
+  light_entity: light.licht_4
+  climate_entity: climate.hmip_wth_1_003922699b2ba1
+  temperature_sensor: sensor.hmip_wth_1_003922699b2ba1_temperatur
+  humidity_sensor: sensor.hmip_wth_1_003922699b2ba1_luftfeuchtigkeit
+
+external_components:
+  - source: github://dmoo500/esphome-tab5-v2-sendspin@main
+    components: [st7123]
+    refresh: 1d
+  - source: github://pr#16057
+    components: [generic_image, sendspin]
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.12.0
+  compile_process_limit: 1
+  on_boot:
+    priority: -100
+    then:
+      - script.execute:
+          id: set_ui_phase
+          phase: ${ui_phase_standby}
+      - script.execute: apply_accent_color_debounced
+      # Configure audio based on headphone detection state
+      - delay: 500ms
+      - if:
+          condition:
+            binary_sensor.is_on: headphone_detect
+          then:
+            # Headphones plugged in at boot
+            - switch.turn_off: speaker_enable
+            - delay: 50ms
+            - select.set:
+                id: es8388_dac_output_select
+                option: "HEADPHONE"
+            - logger.log: "Audio initialized: Headphones detected, speaker disabled"
+          else:
+            # No headphones at boot
+            - switch.turn_on: speaker_enable
+            - delay: 50ms
+            - select.set:
+                id: es8388_dac_output_select
+                option: "LINE1"
+            - logger.log: "Audio initialized: No headphones, speaker enabled"
+esp32:
+  board: esp32-p4-evboard
+  flash_size: 16MB
+  engineering_sample: true
+  cpu_frequency: 360MHz
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+    sdkconfig_options:
+      CONFIG_LWIP_TCP_WND_DEFAULT: "16384"
+      CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+
+
+esp32_hosted:
+  variant: esp32c6
+  active_high: true
+  clk_pin: GPIO12
+  cmd_pin: GPIO13
+  d0_pin: GPIO11
+  d1_pin: GPIO10
+  d2_pin: GPIO9
+  d3_pin: GPIO8
+  reset_pin: GPIO15
+  slot: 1
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+api:
+  on_client_connected: 
+    then:
+      - lvgl.widget.show: api_icon_label
+  on_client_disconnected: 

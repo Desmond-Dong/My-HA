@@ -1,0 +1,12 @@
+# LVGL Main Configuration
+lvgl:
+  displays:
+    - main_display
+  color_depth: 16
+  on_boot:
+    - rx8130.read_time:
+    - script.execute: expand_nav_btn_click_area
+    - script.execute: nav_rail_update
+    - script.execute: sync_ha
+  rotation: 90
+  byte_order: little_endian
