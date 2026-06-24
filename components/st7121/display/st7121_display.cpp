@@ -230,15 +230,17 @@ void ST7121Display::draw_pixels_at(int x_start, int y_start, int w, int h, const
     this->write_to_display_(x_start, y_start, w, h, ptr, x_offset, y_offset, x_pad);
     return;
   }
-
-  if (!this->check_buffer_()) return;
-
+  const size_t dst_bpp = this->get_bytes_per_pixel_();
+  const size_t line_bytes = static_cast<size_t>(w) * dst_bpp;
+  uint8_t *const line_buf = ensure_rgb565_line_buf(line_bytes);
+  if (line_buf == nullptr) return;
   const size_t line_stride = static_cast<size_t>(x_offset + w + x_pad);
-  uint32_t color_value;
+  esp_err_t err = ESP_OK;
   for (int y = 0; y != h; y++) {
     size_t source_idx = static_cast<size_t>(y_offset + y) * line_stride + x_offset;
     size_t source_idx_mod;
     for (int x = 0; x != w; x++, source_idx++) {
+      uint32_t color_value;
       switch (bitness) {
         default:
           color_value = ptr[source_idx];
@@ -260,11 +262,20 @@ void ST7121Display::draw_pixels_at(int x_start, int y_start, int w, int h, const
           }
           break;
       }
-      this->draw_pixel_at(x + x_start, y + y_start, display::ColorUtil::to_color(color_value, order, bitness));
+      auto color = display::ColorUtil::to_color(color_value, order, bitness);
+      if (this->color_depth_ == display::COLOR_BITNESS_565) {
+        const uint16_t value = this->pack_color_565_(color.r, color.g, color.b);
+        line_buf[x * 2 + 0] = static_cast<uint8_t>(value >> 8);
+        line_buf[x * 2 + 1] = static_cast<uint8_t>(value & 0xFF);
+      } else {
+        this->pack_color_888_(color.r, color.g, color.b, &line_buf[x * 3]);
+      }
     }
+    err = esp_lcd_panel_draw_bitmap(this->handle_, x_start, y + y_start, x_start + w, y + y_start + 1, line_buf);
+    if (err != ESP_OK) break;
+    xSemaphoreTake(this->io_lock_, portMAX_DELAY);
   }
-
-  this->write_to_display_(x_start, y_start, w, h, this->buffer_, x_start, y_start, this->width_ - w - x_start);
+  if (err != ESP_OK) ESP_LOGE(TAG, "lcd_panel_draw_bitmap failed: %s", esp_err_to_name(err));
 }
 
 void ST7121Display::write_to_display_(int x_start, int y_start, int w, int h, const uint8_t *ptr, int x_offset, int y_offset, int x_pad) {

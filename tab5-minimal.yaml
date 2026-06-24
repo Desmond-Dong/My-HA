@@ -818,11 +818,7 @@ media_player:
 
     on_play:
       then:
-        - if:
-            condition:
-              microphone.is_capturing:
-            then:
-              - micro_wake_word.stop:
+        - micro_wake_word.stop:
         - script.stop: mp_idle_debounce
         # Save current volume when playback starts (if not muted)
         - lambda: |-
@@ -881,6 +877,7 @@ micro_wake_word:
     - hey_mycroft
     - hey_jarvis
   on_wake_word_detected:
+    - micro_wake_word.stop:
     - script.execute:
         id: play_sound
         priority: false
