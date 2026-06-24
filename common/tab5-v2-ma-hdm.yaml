@@ -35,6 +35,14 @@ esphome:
   friendly_name: ${friendly_name}
   min_version: 2025.12.0
   compile_process_limit: 1
+  platformio_options:
+    build_flags:
+      - -DCORE_DEBUG_LEVEL=0
+      - -fno-exceptions  # Disable C++ exceptions to save RAM
+      - -ffunction-sections
+      - -fdata-sections
+    build_unflags:
+      - -fexceptions
   on_boot:
     priority: -100
     then:
@@ -66,8 +74,6 @@ esphome:
 esp32:
   board: esp32-p4-evboard
   flash_size: 16MB
-  engineering_sample: true
-  cpu_frequency: 360MHz
   framework:
     type: esp-idf
     advanced:
@@ -75,6 +81,8 @@ esp32:
     sdkconfig_options:
       CONFIG_LWIP_TCP_WND_DEFAULT: "16384"
       CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ: "360"
 
 
 esp32_hosted:

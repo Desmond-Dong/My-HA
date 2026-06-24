@@ -24,11 +24,10 @@ substitutions:
   humidity_sensor: sensor.reterminal_e1001_humidity
 
 external_components:
-  - source: github://dmoo500/esphome-tab5-v2-sendspin@main
-    components: [st7123]
-    refresh: 1d
-  - source: github://pr#16057
-    components: [generic_image, sendspin]
+  - source:
+      type: local
+      path: components
+    components: [st7121, st7123, sendspin, generic_image]
 
 esphome:
   name: ${name}
@@ -63,7 +62,7 @@ esphome:
                 option: "LINE1"
             - logger.log: "Audio initialized: No headphones, speaker enabled"
 esp32:
-  board: esp32-p4-evboard
+  variant: esp32p4
   flash_size: 16MB
   engineering_sample: true
   cpu_frequency: 360MHz
@@ -80,7 +79,6 @@ packages:
   globals: !include common/tab5-v2-globals.yaml
   fonts: !include common/tab5-v2-fonts.yaml
   images: !include common/tab5-v2-images.yaml
-  hardware: !include common/tab5-v2-ma-hdm.yaml
   lvgl_main: !include common/lvgl-main.yaml
   # Styles and UI Components
   lvgl_styles: !include common/styles/lvgl-styles.yaml
@@ -621,33 +619,29 @@ number:
 
   
 display:
-  - platform: mipi_dsi
+  - platform: st7121
     id: main_display
     dimensions:
       height: 1280
       width: 720
-    model: M5STACK-TAB5-V2
-    pclk_frequency: 60MHz
-    lane_bit_rate: 730Mbps
+    color_order: BGR
+    pixel_mode: 24bit
+    color_depth: 24bit
+    pclk_frequency: 70MHz
+    vsync_pulse_width: 20
+    vsync_back_porch: 24
+    vsync_front_porch: 200
     reset_pin:
       pi4ioe5v6408: pi4ioe1
       number: 4
-    color_depth: 16
-    pixel_mode: 16bit
-    color_order: RGB
-    init_sequence:
-      - delay 120ms
-      - [0x11]
-      - delay 120ms
-      - [0x29]
-      - delay 20ms
-    update_interval: never
     auto_clear_enabled: false
+    update_interval: never
 
 touchscreen:
   - platform: st7123
+    display: main_display
     interrupt_pin: GPIO23
-    update_interval: never
+    update_interval: "50ms"
     calibration:
       x_min: 0
       x_max: 720
@@ -655,7 +649,7 @@ touchscreen:
       y_max: 1280
     id: touch
     on_touch:
-    - script.execute: standby_screen_activity
+      - script.execute: standby_screen_activity
 
 esp_ldo:
   - voltage: 2.5V
@@ -774,6 +768,8 @@ audio_file:
     file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
   - id: ready_sound
     file: https://github.com/RealDeco/xiaozhi-esphome/raw/main/sounds/${startup_sound_file}.flac
+  - id: wake_word_triggered_sound
+    file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac
 
 sendspin:
   id: sendspin_hub
@@ -885,6 +881,11 @@ micro_wake_word:
     - hey_mycroft
     - hey_jarvis
   on_wake_word_detected:
+    - script.execute:
+        id: play_sound
+        priority: false
+        sound_file: "wake_word_triggered_sound"
+    - delay: 300ms
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
 
@@ -919,7 +920,7 @@ time:
     id: ha_time
     on_time_sync:
       then:
-        rx8130.write_time:
+        - rx8130.write_time:
   - platform: rx8130
     id: rx8130_time
     update_interval: never

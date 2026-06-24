@@ -38,6 +38,10 @@ static bool notify_refresh_ready(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel
 namespace esphome {
 namespace st7121 {
 
+size_t ST7121Display::get_bytes_per_pixel_() const {
+  return this->color_depth_ == display::COLOR_BITNESS_888 ? 3 : 2;
+}
+
 uint16_t ST7121Display::pack_color_565_(uint8_t r, uint8_t g, uint8_t b) const {
   if (this->color_mode_ == display::COLOR_ORDER_BGR) {
     std::swap(r, b);
@@ -45,6 +49,18 @@ uint16_t ST7121Display::pack_color_565_(uint8_t r, uint8_t g, uint8_t b) const {
   const uint8_t hi = static_cast<uint8_t>(r & 0xF8) | (g >> 5);
   const uint8_t lo = static_cast<uint8_t>((g & 0x1C) << 3) | (b >> 3);
   return static_cast<uint16_t>(lo | (hi << 8));
+}
+
+void ST7121Display::pack_color_888_(uint8_t r, uint8_t g, uint8_t b, uint8_t *dst) const {
+  if (this->color_mode_ == display::COLOR_ORDER_BGR) {
+    dst[0] = b;
+    dst[1] = g;
+    dst[2] = r;
+  } else {
+    dst[0] = r;
+    dst[1] = g;
+    dst[2] = b;
+  }
 }
 
 uint16_t ST7121Display::swap_rgb565_rb_(uint16_t value) {
@@ -210,13 +226,50 @@ void ST7121Display::update() {
 
 void ST7121Display::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr, display::ColorOrder order, display::ColorBitness bitness, bool big_endian, int x_offset, int y_offset, int x_pad) {
   if (w <= 0 || h <= 0) return;
-  if (bitness != this->color_depth_) return display::Display::draw_pixels_at(x_start, y_start, w, h, ptr, order, bitness, big_endian, x_offset, y_offset, x_pad);
-  this->write_to_display_(x_start, y_start, w, h, ptr, x_offset, y_offset, x_pad);
+  if (bitness == this->color_depth_) {
+    this->write_to_display_(x_start, y_start, w, h, ptr, x_offset, y_offset, x_pad);
+    return;
+  }
+
+  if (!this->check_buffer_()) return;
+
+  const size_t line_stride = static_cast<size_t>(x_offset + w + x_pad);
+  uint32_t color_value;
+  for (int y = 0; y != h; y++) {
+    size_t source_idx = static_cast<size_t>(y_offset + y) * line_stride + x_offset;
+    size_t source_idx_mod;
+    for (int x = 0; x != w; x++, source_idx++) {
+      switch (bitness) {
+        default:
+          color_value = ptr[source_idx];
+          break;
+        case display::COLOR_BITNESS_565:
+          source_idx_mod = source_idx * 2;
+          if (big_endian) {
+            color_value = (ptr[source_idx_mod] << 8) + ptr[source_idx_mod + 1];
+          } else {
+            color_value = ptr[source_idx_mod] + (ptr[source_idx_mod + 1] << 8);
+          }
+          break;
+        case display::COLOR_BITNESS_888:
+          source_idx_mod = source_idx * 3;
+          if (big_endian) {
+            color_value = (ptr[source_idx_mod + 0] << 16) + (ptr[source_idx_mod + 1] << 8) + ptr[source_idx_mod + 2];
+          } else {
+            color_value = ptr[source_idx_mod + 0] + (ptr[source_idx_mod + 1] << 8) + (ptr[source_idx_mod + 2] << 16);
+          }
+          break;
+      }
+      this->draw_pixel_at(x + x_start, y + y_start, display::ColorUtil::to_color(color_value, order, bitness));
+    }
+  }
+
+  this->write_to_display_(x_start, y_start, w, h, this->buffer_, x_start, y_start, this->width_ - w - x_start);
 }
 
 void ST7121Display::write_to_display_(int x_start, int y_start, int w, int h, const uint8_t *ptr, int x_offset, int y_offset, int x_pad) {
   esp_err_t err = ESP_OK;
-  auto bytes_per_pixel = 3 - this->color_depth_;
+  auto bytes_per_pixel = this->get_bytes_per_pixel_();
   auto stride = (x_offset + w + x_pad) * bytes_per_pixel;
   ptr += y_offset * stride + x_offset * bytes_per_pixel;
   const uint8_t *const region_ptr = ptr;
@@ -233,6 +286,25 @@ void ST7121Display::write_to_display_(int x_start, int y_start, int w, int h, co
           }
           line_buf[col * 2 + 0] = static_cast<uint8_t>(value >> 8);
           line_buf[col * 2 + 1] = static_cast<uint8_t>(value & 0xFF);
+        }
+        err = esp_lcd_panel_draw_bitmap(this->handle_, x_start, y + y_start, x_start + w, y + y_start + 1, line_buf);
+        if (err != ESP_OK) break;
+        xSemaphoreTake(this->io_lock_, portMAX_DELAY);
+      }
+      if (err != ESP_OK) ESP_LOGE(TAG, "lcd_panel_draw_bitmap failed: %s", esp_err_to_name(err));
+      return;
+    }
+  }
+  if (this->color_depth_ == display::COLOR_BITNESS_888) {
+    const size_t line_bytes = static_cast<size_t>(w) * 3;
+    uint8_t *const line_buf = ensure_rgb565_line_buf(line_bytes);
+    if (line_buf != nullptr) {
+      for (int y = 0; y != h; y++) {
+        const uint8_t *src_row = region_ptr + y * stride;
+        for (int col = 0; col < w; col++) {
+          line_buf[col * 3 + 0] = src_row[col * 3 + 0];
+          line_buf[col * 3 + 1] = src_row[col * 3 + 1];
+          line_buf[col * 3 + 2] = src_row[col * 3 + 2];
         }
         err = esp_lcd_panel_draw_bitmap(this->handle_, x_start, y + y_start, x_start + w, y + y_start + 1, line_buf);
         if (err != ESP_OK) break;
@@ -260,7 +332,7 @@ void ST7121Display::write_to_display_(int x_start, int y_start, int w, int h, co
 bool ST7121Display::check_buffer_() {
   if (this->is_failed()) return false;
   if (this->buffer_ != nullptr) return true;
-  auto bytes_per_pixel = 3 - this->color_depth_;
+  auto bytes_per_pixel = this->get_bytes_per_pixel_();
   RAMAllocator<uint8_t> allocator;
   this->buffer_ = allocator.allocate(this->height_ * this->width_ * bytes_per_pixel);
   if (this->buffer_ == nullptr) {
@@ -286,6 +358,14 @@ void ST7121Display::draw_pixel_at(int x, int y, Color color) {
     uint16_t new_color = this->pack_color_565_(color.r, color.g, color.b);
     if (ptr_16[pos] == new_color) return;
     ptr_16[pos] = new_color;
+  } else if (this->color_depth_ == display::COLOR_BITNESS_888) {
+    auto *ptr_24 = this->buffer_ + (pos * 3);
+    uint8_t new_color[3];
+    this->pack_color_888_(color.r, color.g, color.b, new_color);
+    if (ptr_24[0] == new_color[0] && ptr_24[1] == new_color[1] && ptr_24[2] == new_color[2]) return;
+    ptr_24[0] = new_color[0];
+    ptr_24[1] = new_color[1];
+    ptr_24[2] = new_color[2];
   }
   if (x < this->x_low_) this->x_low_ = x;
   if (y < this->y_low_) this->y_low_ = y;
@@ -300,6 +380,15 @@ void ST7121Display::fill(Color color) {
     auto *ptr_16 = reinterpret_cast<uint16_t *>(this->buffer_);
     uint16_t new_color = this->pack_color_565_(color.r, color.g, color.b);
     std::fill_n(ptr_16, this->width_ * this->height_, new_color);
+  } else if (this->color_depth_ == display::COLOR_BITNESS_888) {
+    uint8_t new_color[3];
+    this->pack_color_888_(color.r, color.g, color.b, new_color);
+    for (size_t pos = 0; pos < this->width_ * this->height_; pos++) {
+      auto *ptr_24 = this->buffer_ + (pos * 3);
+      ptr_24[0] = new_color[0];
+      ptr_24[1] = new_color[1];
+      ptr_24[2] = new_color[2];
+    }
   }
 }
 

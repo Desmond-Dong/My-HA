@@ -62,7 +62,9 @@ class ST7121Display : public display::Display {
   void write_to_display_(int x_start, int y_start, int w, int h, const uint8_t *ptr, int x_offset, int y_offset,
                          int x_pad);
   bool check_buffer_();
+  size_t get_bytes_per_pixel_() const;
   uint16_t pack_color_565_(uint8_t r, uint8_t g, uint8_t b) const;
+  void pack_color_888_(uint8_t r, uint8_t g, uint8_t b, uint8_t *dst) const;
   static uint16_t swap_rgb565_rb_(uint16_t value);
 
   GPIOPin *reset_pin_{nullptr};

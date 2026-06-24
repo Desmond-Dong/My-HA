@@ -1,21 +1,23 @@
 external_components:
-  - source: github://dmoo500/esphome-tab5-v2-sendspin@main
-    components: [st7123]
-    refresh: 1d
+  - source:
+      type: local
+      path: components
+    components: [st7121]
 
 esphome:
   name: tab5-ha-hmi
-  friendly_name: M5Stack Tab5 Home Assistant HMI
+  friendly_name: tab5-ha-hmi
 
-esp32:
-  board: esp32-p4-evboard
-  variant: esp32p4
-  flash_size: 16MB
-  engineering_sample: true
-  framework:
-    type: esp-idf
-    advanced:
-      enable_idf_experimental_features: true
+esp32:                                                                                                                                                                                                                                     
+    variant: esp32p4                                                                                                                                                                                                                         
+    flash_size: 16MB                                                                                                                                                                                                                         
+    cpu_frequency: 360MHz                                                                                                                                                                                                                    
+    engineering_sample: true                                                                                                                                                                                                                 
+    framework:                                                                                                                                                                                                                               
+      type: esp-idf                                                                                                                                                                                                                          
+      advanced:                                                                                                                                                                                                                              
+        enable_idf_experimental_features: true       
+        
 
 esp32_hosted:
   variant: esp32c6
@@ -32,23 +34,17 @@ esp32_hosted:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  ap:
-    ssid: Tab5 Fallback Hotspot
-    password: !secret wifi_password
-
-api:
-
-ota:
-  platform: esphome
-
-mdns:
-
 psram:
   mode: hex
   speed: 200MHz
+
+api:
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
 i2c:
   - id: bsp_bus
@@ -56,15 +52,36 @@ i2c:
     scl: GPIO32
     frequency: 400kHz
 
-esp_ldo:
-  - voltage: 2.5V
-    channel: 3
-
 pi4ioe5v6408:
   - id: pi4ioe1
     address: 0x43
   - id: pi4ioe2
     address: 0x44
+
+switch:
+  - platform: gpio
+    id: wifi_power
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 0
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: usb_5v_power
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 3
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: external_5v_power
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 2
+    restore_mode: ALWAYS_ON
+    
+
+esp_ldo:
+  - voltage: 2.5V
+    channel: 3
 
 output:
   - platform: ledc
@@ -75,65 +92,23 @@ output:
 light:
   - platform: monochromatic
     output: backlight_pwm
+    name: "Display Backlight"
     id: backlight
-    name: Display Backlight
     restore_mode: RESTORE_DEFAULT_ON
 
 display:
-  - platform: mipi_dsi
+  - platform: st7121
+    id: lcd
     dimensions:
-      height: 1280
       width: 720
-    model: M5STACK-TAB5-V2
-    rotation: 90
+      height: 1280
+    color_order: RGB
     reset_pin:
       pi4ioe5v6408: pi4ioe1
       number: 4
+    rotation: 90
     pixel_mode: 16bit
-    color_order: RGB
-    update_interval: never
     auto_clear_enabled: false
+    update_interval: 1s
     lambda: |-
-      it.filled_rectangle(0, 0, 1280, 720, Color(255, 0, 0));
-      it.filled_rectangle(100, 100, 300, 300, Color(0, 255, 0));
-      it.filled_rectangle(500, 300, 300, 300, Color(0, 0, 255));
-
-touchscreen:
-  - platform: st7123
-    interrupt_pin: GPIO23
-    reset_pin:
-      pi4ioe5v6408: pi4ioe1
-      number: 5
-    update_interval: never
-    calibration:
-      x_min: 0
-      x_max: 720
-      y_min: 0
-      y_max: 1280
-    id: touch
-    on_touch:
-      - logger.log: "touch detected"
-
-binary_sensor:
-  - platform: gpio
-    id: headphone_detect
-    name: Headphone Detect
-    pin:
-      pi4ioe5v6408: pi4ioe1
-      number: 7
-
-switch:
-  - platform: gpio
-    id: speaker_enable
-    name: Speaker Enable
-    pin:
-      pi4ioe5v6408: pi4ioe1
-      number: 1
-    restore_mode: ALWAYS_ON
-  - platform: gpio
-    id: wifi_power
-    name: WiFi Power
-    pin:
-      pi4ioe5v6408: pi4ioe2
-      number: 0
-    restore_mode: ALWAYS_ON
+      it.filled_rectangle(0, 0, it.get_width(), it.get_height(), Color(0, 255, 0));
