@@ -130,7 +130,7 @@ script:
     mode: restart
     then:
       - delay: !lambda |-
-          return (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f);
+          return str_sprintf("%ums", (uint32_t) (id(player_controls_timeout_seconds).state * 1000.0f));
       - if:
           condition:
             media_player.is_idle: external_media_player
@@ -178,7 +178,7 @@ script:
     mode: restart
     then:
       - delay: !lambda |-
-          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+          return str_sprintf("%ums", (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f));
       - if:
           condition:
             and:
@@ -195,7 +195,7 @@ script:
           else:
             - script.stop: standby_screen_timeout
       - delay: !lambda |-
-          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+          return str_sprintf("%ums", (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f));
       - if:
           condition:
             and:
@@ -209,7 +209,7 @@ script:
           else:
             - script.stop: standby_screen_timeout
       - delay: !lambda |-
-          return (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f);
+          return str_sprintf("%ums", (uint32_t) (id(standby_screen_timeout_seconds).state * 1000.0f / 3.0f));
       - if:
           condition:
             and:
