@@ -77,6 +77,30 @@ lvgl:
                   text_align: CENTER
 
         - obj:
+            id: lyrics_bar
+            align: BOTTOM_MID
+            y: -78
+            width: 680
+            height: 40
+            bg_color: 0x000000
+            bg_opa: 60%
+            border_opa: TRANSP
+            radius: 4
+            pad_all: 0
+            scrollable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: lyrics_label
+                  align: CENTER
+                  width: 660
+                  text: ""
+                  text_color: 0xFFFFFF
+                  text_font: font_date
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+
+        - obj:
             id: volume_feedback_box
             align: CENTER
             width: 126

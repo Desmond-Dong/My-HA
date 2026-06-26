@@ -120,6 +120,9 @@ script:
           then:
             - lambda: 'id(boot_announce_active) = true;'
 
+      - micro_wake_word.stop:
+      - voice_assistant.stop:
+
       - if:
           condition:
             lambda: return priority;
@@ -136,4 +139,3 @@ script:
               .set_announcement(true)
               .perform();
           }
-

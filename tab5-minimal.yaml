@@ -855,20 +855,10 @@ media_player:
         - script.execute:
             id: set_ui_phase
             phase: ${ui_phase_player_controls}
-        - if:
-            condition:
-              api.connected:
-            then:
-              - micro_wake_word.start:
 
     on_idle:
       then:
         - script.execute: mp_idle_debounce
-        - if:
-            condition:
-              api.connected:
-            then:
-              - micro_wake_word.start:
 
 micro_wake_word:
   id: mww
@@ -891,6 +881,13 @@ voice_assistant:
   microphone: tab5_microphone
   media_player: external_media_player
   micro_wake_word: mww
+  on_tts_start:
+    - micro_wake_word.stop:
+    - if:
+        condition:
+          microphone.is_capturing:
+        then:
+          - voice_assistant.stop:
   on_end:
     - wait_until:
         condition:
@@ -938,6 +935,31 @@ time:
                 return t.strftime("%Y-%m-%d %a").c_str();
 
 text_sensor:
+  - platform: sendspin
+    sendspin_id: sendspin_hub
+    type: title
+    id: sendspin_title
+    name: Sendspin Title
+    internal: true
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: now_playing_label
+            text: !lambda return x.c_str();
+
+  - platform: sendspin
+    sendspin_id: sendspin_hub
+    type: lyrics
+    id: sendspin_lyrics
+    name: Sendspin Lyrics
+    internal: true
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: lyrics_label
+            text: !lambda return x.c_str();
+        - lvgl.widget.show: lyrics_bar
+
   - platform: homeassistant
     id: light_state
     entity_id: ${light_entity}

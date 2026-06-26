@@ -30,6 +30,10 @@ const char *SendspinTextSensor::extract_value_(const sendspin::ServerMetadataSta
       if (metadata.album_artist.has_value())
         return metadata.album_artist.value().c_str();
       return nullptr;
+    case SendspinTextMetadataTypes::LYRICS:
+      if (metadata.lyrics.has_value())
+        return metadata.lyrics.value().c_str();
+      return nullptr;
   }
   return nullptr;
 }
