@@ -70,12 +70,16 @@ font:
     size: 96
     bpp: 2
 
-  - file: fonts/NotoSansSC-Light.ttf
+  - file:
+      type: local
+      path: ../fonts/NotoSansSC-Light.ttf
     id: font_display
     size: 22
     bpp: 2
 
-  - file: fonts/NotoSansSC-Regular.ttf
+  - file:
+      type: local
+      path: ../fonts/NotoSansSC-Regular.ttf
     id: font_cjk_28
     size: 28
     bpp: 2
