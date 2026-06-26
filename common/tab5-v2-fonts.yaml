@@ -72,14 +72,14 @@ font:
 
   - file:
       type: local
-      path: ../fonts/NotoSansSC-Light.ttf
+      path: fonts/NotoSansSC-Light.ttf
     id: font_display
     size: 22
     bpp: 2
 
   - file:
       type: local
-      path: ../fonts/NotoSansSC-Regular.ttf
+      path: fonts/NotoSansSC-Regular.ttf
     id: font_cjk_28
     size: 28
     bpp: 2
