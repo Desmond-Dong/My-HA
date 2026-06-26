@@ -72,13 +72,24 @@ font:
 
   - file:
       type: gfonts
-      family: Noto Sans
+      family: Noto Sans SC
       weight: 300
     id: font_display
     size: 22
     glyphsets:
-      - GF_Latin_Core
-      - GF_Cyrillic_Core
+      - chinese-simplified
+      - latin
+      - cyrillic
+
+  - file:
+      type: gfonts
+      family: Noto Sans SC
+      weight: 400
+    id: font_cjk_28
+    size: 28
+    glyphsets:
+      - chinese-simplified
+      - latin
 
   - file:
       type: gfonts

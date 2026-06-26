@@ -96,7 +96,7 @@ lvgl:
                   width: 660
                   text: ""
                   text_color: 0xFFFFFF
-                  text_font: font_date
+                  text_font: font_cjk_28
                   long_mode: SCROLL_CIRCULAR
                   text_align: CENTER
 
