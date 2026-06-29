@@ -14,8 +14,8 @@ lvgl:
             widgets:
               - label:
                   styles: nav_label_inactivate
-                  text_font: montserrat_32
-                  text: "Wohnzimmer"
+                  text_font: font_cjk_28
+                  text: "客厅"
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 0
               - obj:
@@ -47,8 +47,8 @@ lvgl:
                         widgets:
                           - label:
                               id: ac_state_label
-                              text_font: montserrat_24
-                              text: "Off"   
+                              text_font: font_cjk_28
+                              text: "关"   
                     - obj:
                         styles: climate_control_bg
                         scrollable: false
@@ -121,5 +121,5 @@ lvgl:
         - label:
             x: 220
             y: 40
-            text_font: montserrat_48
-            text: "Heizung"
+            text_font: font_cjk_28
+            text: "空调"

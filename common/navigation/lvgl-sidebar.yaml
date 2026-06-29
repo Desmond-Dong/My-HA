@@ -42,7 +42,7 @@ lvgl:
                 - label:
                     styles: nav_label_inactivate
                     id: dash_btn_label
-                    text: "Dashboard"
+                    text: "仪表盘"
 
 
           # Light bulb icon button     
@@ -72,7 +72,7 @@ lvgl:
                 - label:
                     styles: nav_label_inactivate
                     id: light_btn_label
-                    text: "Light"
+                    text: "灯光"
 
           # Climate (Temp/Humi/AC) icon button
           - obj:
@@ -101,7 +101,7 @@ lvgl:
                 - label:
                     styles: nav_label_inactivate
                     id: climate_btn_label
-                    text: "Climate"
+                    text: "空调"
           
           # Media Player icon button
           - obj:
@@ -130,7 +130,7 @@ lvgl:
                 - label:
                     styles: nav_label_inactivate
                     id: media_btn_label
-                    text: "Media"
+                    text: "媒体"
           
     - obj:
         align: CENTER
@@ -158,10 +158,10 @@ lvgl:
                       - lvgl.widget.hide: light_card_modal_container
                 - label:
                     id: light_bright_label
-                    text_font: montserrat_48
+                    text_font: font_cjk_28
                     align: TOP_MID
                     y: 30
-                    text: "off"
+                    text: "关"
                 # Brightness adjust slider
                 - slider:
                     align: CENTER
@@ -403,9 +403,9 @@ lvgl:
                       - lambda: id(set_ac_temp)->execute(float(x) / 10.0f);
 
                 - label:
-                    text_font: montserrat_24
+                    text_font: font_cjk_28
                     id: ac_state
-                    text: "OFF"
+                    text: "关"
                     align: CENTER
                     y: -80
                 - label:
@@ -494,8 +494,8 @@ lvgl:
                     widgets:
                       # AC Mode
                       - label:
-                          text_font: montserrat_24
-                          text: "Mode"
+                          text_font: font_cjk_28
+                          text: "模式"
                       - dropdown:
                           id: ac_mode_dd
                           width: 150
@@ -504,22 +504,22 @@ lvgl:
                           pad_top: 16
                           pad_bottom: 16
                           pad_left: 18
-                          text_font: montserrat_24
+                          text_font: font_cjk_28
                           border_opa: TRANSP
                           bg_color: 0xF2F2F2
                           dir: TOP
                           indicator:
                             opa: TRANSP
-                          selected_text: "Off"
+                          selected_text: "关闭"
                           options:
-                            - Heat_Cool
-                            - Heat
-                            - Cool
-                            - Dry
-                            - Only Fan
-                            - "Off" # In case conversions
+                            - 制冷制热
+                            - 制热
+                            - 制冷
+                            - 除湿
+                            - 仅风扇
+                            - "关闭" # In case conversions
                           dropdown_list:
-                            text_font: montserrat_24
+                            text_font: font_cjk_28
                             text_align: CENTER
                             selected:
                               checked:

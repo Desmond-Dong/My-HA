@@ -65,5 +65,5 @@ lvgl:
         - label:
             x: 220
             y: 40
-            text_font: montserrat_48
-            text: "Dashboard"
+            text_font: font_cjk_28
+            text: "仪表盘"

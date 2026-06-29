@@ -117,14 +117,12 @@ script:
             lambda: 'return phase == ${ui_phase_player_controls};'
           then:
             - lvgl.page.show: player_controls_page
-            - lvgl.widget.hide: sidebars
             - script.execute: player_controls_timeout
       - if:
           condition:
             lambda: 'return phase == ${ui_phase_now_playing};'
           then:
             - lvgl.page.show: sendspin_page
-            - lvgl.widget.hide: sidebars
 
   - id: player_controls_timeout
     mode: restart

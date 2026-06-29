@@ -15,8 +15,8 @@ lvgl:
             widgets:
               - label:
                   styles: nav_label_inactivate
-                  text_font: montserrat_32
-                  text: "Room"
+                  text_font: font_cjk_28
+                  text: "房间"
                   grid_cell_row_pos: 0
                   grid_cell_column_pos: 0
               - obj:
@@ -56,14 +56,16 @@ lvgl:
                                 entity_id: ${light_entity}
 
                     - label:
+                        text_font: font_cjk_28
                         styles: card_sm_main_label
-                        text: "Wohnzimmer"
+                        text: "客厅"
                     - label:
+                        text_font: font_cjk_28
                         styles: card_sm_sub_label
                         id: light_status
-                        text: "OFF"
+                        text: "关"
         - label:
             x: 220
             y: 40
-            text_font: montserrat_48
-            text: "Licht"
+            text_font: font_cjk_28
+            text: "灯光"

@@ -6,9 +6,9 @@ lvgl:
       widgets:
         - label:
             align: CENTER
-            text: "Home Connected"
+            text: "已连接"
             text_color: 0xFFFFFF
-            text_font: font_boot
+            text_font: font_cjk_28
             width: 230
             long_mode: WRAP
             text_align: CENTER
