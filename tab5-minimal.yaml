@@ -883,11 +883,6 @@ voice_assistant:
   micro_wake_word: mww
   on_tts_start:
     - micro_wake_word.stop:
-    - if:
-        condition:
-          microphone.is_capturing:
-        then:
-          - voice_assistant.stop:
   on_end:
     - wait_until:
         condition:
