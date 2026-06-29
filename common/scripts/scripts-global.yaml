@@ -110,7 +110,7 @@ script:
           condition:
             lambda: 'return phase == ${ui_phase_standby};'
           then:
-            - lvgl.page.show: idle_page
+            - lvgl.page.show: dashboard_page
             - lvgl.widget.show: sidebars
       - if:
           condition:
