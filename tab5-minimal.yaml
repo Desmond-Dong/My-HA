@@ -874,11 +874,25 @@ micro_wake_word:
     - hey_mycroft
     - hey_jarvis
   on_wake_word_detected:
-    - micro_wake_word.stop:
     - script.execute:
         id: play_sound
         priority: false
         sound_file: "wake_word_triggered_sound"
+    - wait_until:
+        condition:
+          - media_player.is_announcing:
+              id: external_media_player
+        timeout: 1s
+    - wait_until:
+        condition:
+          - and:
+            - not:
+                media_player.is_announcing:
+                  id: external_media_player
+            - not:
+                speaker.is_playing:
+                  id: box_speaker
+        timeout: 2s
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
 

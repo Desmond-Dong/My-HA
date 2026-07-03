@@ -122,6 +122,7 @@ script:
 
       - micro_wake_word.stop:
       - voice_assistant.stop:
+      - delay: 200ms
 
       - if:
           condition:
