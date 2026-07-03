@@ -814,7 +814,7 @@ media_player:
         - sendspin_media_source
     volume_increment: 0.05
     volume_min: 0.3
-    volume_max: 0.85
+    volume_max: 1.0
 
     on_play:
       then:
@@ -825,17 +825,9 @@ media_player:
             if (!id(is_muted) && id(external_media_player).volume > 0.0) {
               id(saved_volume) = id(external_media_player).volume;
             }
-        - if:
-            condition:
-              lambda: 'return id(ui_phase) == ${ui_phase_player_controls};'
-            then:
-              - script.execute:
-                  id: set_ui_phase
-                  phase: ${ui_phase_player_controls}
-            else:
-              - script.execute:
-                  id: set_ui_phase
-                  phase: ${ui_phase_now_playing}
+        - script.execute:
+            id: set_ui_phase
+            phase: ${ui_phase_player_controls}
 
     on_announcement:
       then:
@@ -858,7 +850,12 @@ media_player:
 
     on_idle:
       then:
-        - script.execute: mp_idle_debounce
+        - if:
+            condition:
+              lambda: 'return !id(tts_playing);'
+            then:
+              - script.execute: mp_idle_debounce
+              - micro_wake_word.start:
 
 micro_wake_word:
   id: mww
@@ -883,6 +880,16 @@ voice_assistant:
   micro_wake_word: mww
   on_tts_start:
     - micro_wake_word.stop:
+    - lambda: 'id(tts_playing) = true;'
+    - lambda: 'id(tab5_microphone).stop();'
+    - wait_until:
+        condition:
+          lambda: 'return id(tab5_microphone).is_stopped();'
+        timeout: 2s
+    - media_player.volume_set:
+        id: external_media_player
+        volume: !lambda |-
+          return id(is_muted) ? 0.0 : id(saved_volume);
   on_end:
     - wait_until:
         condition:
@@ -897,6 +904,7 @@ voice_assistant:
             - not:
                 speaker.is_playing:
                   id: box_speaker
+    - lambda: 'id(tts_playing) = false;'
     - micro_wake_word.start:
   on_client_connected:
     - micro_wake_word.start:
@@ -941,19 +949,6 @@ text_sensor:
         - lvgl.label.update:
             id: now_playing_label
             text: !lambda return x.c_str();
-
-  - platform: sendspin
-    sendspin_id: sendspin_hub
-    type: lyrics
-    id: sendspin_lyrics
-    name: Sendspin Lyrics
-    internal: true
-    on_value:
-      then:
-        - lvgl.label.update:
-            id: lyrics_label
-            text: !lambda return x.c_str();
-        - lvgl.widget.show: lyrics_bar
 
   - platform: homeassistant
     id: light_state

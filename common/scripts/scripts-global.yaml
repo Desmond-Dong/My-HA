@@ -136,10 +136,6 @@ script:
             - script.execute:
                 id: set_ui_phase
                 phase: ${ui_phase_standby}
-          else:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_now_playing}
 
 
   - id: load_standby_background
