@@ -833,6 +833,11 @@ media_player:
       then:
         - if:
             condition:
+              - microphone.is_capturing:
+            then:
+              - micro_wake_word.stop:
+        - if:
+            condition:
               lambda: 'return id(boot_announce_active);'
             then:
               - lvgl.page.show: boot_sound_page
@@ -855,7 +860,12 @@ media_player:
               lambda: 'return !id(tts_playing);'
             then:
               - script.execute: mp_idle_debounce
-              - micro_wake_word.start:
+              - if:
+                  condition:
+                    not:
+                      voice_assistant.is_running:
+                  then:
+                    - micro_wake_word.start:
 
 micro_wake_word:
   id: mww
@@ -881,11 +891,6 @@ voice_assistant:
   on_tts_start:
     - micro_wake_word.stop:
     - lambda: 'id(tts_playing) = true;'
-    - lambda: 'id(tab5_microphone).stop();'
-    - wait_until:
-        condition:
-          lambda: 'return id(tab5_microphone).is_stopped();'
-        timeout: 2s
     - media_player.volume_set:
         id: external_media_player
         volume: !lambda |-
