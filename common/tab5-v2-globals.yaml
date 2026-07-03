@@ -143,7 +143,7 @@ globals:
   - id: saved_volume
     type: float
     restore_value: no
-    initial_value: "0.6"
+    initial_value: "1.0"
   - id: tts_playing
     type: bool
     restore_value: no
