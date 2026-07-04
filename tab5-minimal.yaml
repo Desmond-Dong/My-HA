@@ -969,6 +969,23 @@ text_sensor:
         - lvgl.label.update:
             id: now_playing_label
             text: !lambda return x.c_str();
+        - lvgl.label.update:
+            id: controls_title_label
+            text: !lambda return x.c_str();
+        - lvgl.widget.show: controls_title_label
+
+  - platform: sendspin
+    sendspin_id: sendspin_hub
+    type: artist
+    id: sendspin_artist
+    name: Sendspin Artist
+    internal: true
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: controls_artist_label
+            text: !lambda return x.c_str();
+        - lvgl.widget.show: controls_artist_label
 
   - platform: homeassistant
     id: light_state

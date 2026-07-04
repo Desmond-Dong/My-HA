@@ -29,46 +29,53 @@ lvgl:
                       break;
                   }
 
-        - image:
-            id: controls_album_art_widget
+        - obj:
+            id: controls_media_group
             align: CENTER
-            x: 0
-            y: 0
-            src: fallback_playing_image1
-            width: ${imagewidth}
-            height: ${imageheight}
-            antialias: false
+            width: 1080
+            height: 720
+            bg_opa: TRANSP
+            border_opa: TRANSP
             clickable: false
+            widgets:
+              - image:
+                  id: controls_album_art_widget
+                  align: CENTER
+                  x: 0
+                  y: -40
+                  src: fallback_playing_image1
+                  width: 500
+                  height: 500
+                  antialias: false
+                  clickable: false
 
-        - label:
-            id: controls_title_label
-            align: TOP_MID
-            x: 0
-            y: 30
-            width: 560
-            text: ""
-            text_color: 0xFFFFFF
-            text_font: font_cjk_28
-            long_mode: SCROLL_CIRCULAR
-            text_align: CENTER
-            bg_opa: TRANSP
-            border_opa: TRANSP
-            hidden: true
+              - label:
+                  id: controls_title_label
+                  align: CENTER
+                  x: -60
+                  y: 240
+                  width: 700
+                  text: ""
+                  text_color: 0xFFFFFF
+                  text_font: font_cjk_28
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+                  bg_opa: TRANSP
+                  border_opa: TRANSP
 
-        - label:
-            id: controls_artist_label
-            align: TOP_MID
-            x: 0
-            y: 60
-            width: 560
-            text: ""
-            text_color: 0x66CCFF
-            text_font: font_display
-            long_mode: SCROLL_CIRCULAR
-            text_align: CENTER
-            bg_opa: TRANSP
-            border_opa: TRANSP
-            hidden: true
+              - label:
+                  id: controls_artist_label
+                  align: CENTER
+                  x: -60
+                  y: 290
+                  width: 700
+                  text: ""
+                  text_color: 0x66CCFF
+                  text_font: font_cjk_28
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: CENTER
+                  bg_opa: TRANSP
+                  border_opa: TRANSP
 
         - obj:
             align: RIGHT_MID
@@ -201,7 +208,7 @@ lvgl:
                     - label:
                         id: controls_mute_icon
                         align: CENTER
-                        text: "\U000F057E"
+                        text: "\U000F04C3"
                         text_color: 0xFFFFFF
                         text_font: font_mdi_controls
 

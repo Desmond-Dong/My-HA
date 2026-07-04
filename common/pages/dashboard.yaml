@@ -2,9 +2,12 @@
 lvgl:
   pages:
     - id: dashboard_page
+      scrollable: false
       widgets:
         - obj:
+            id: dashboard_content
             styles: content_container
+            scrollable: false
             widgets:
               - label:
                   id: time_label
@@ -25,6 +28,7 @@ lvgl:
                   border_opa: TRANSP
                   align: CENTER
                   y: 200
+                  scrollable: false
                   layout:
                     type: GRID
                     grid_columns: [FR(20), FR(30), FR(20), FR(30)]

@@ -152,3 +152,11 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: album_art_floating
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: dashboard_floating
+    type: bool
+    restore_value: no
+    initial_value: "false"

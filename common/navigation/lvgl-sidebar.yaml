@@ -10,7 +10,7 @@ lvgl:
         layout:
           type: flex
           flex_flow: COLUMN
-          pad_row: 12
+          pad_row: 0
           flex_align_main: start
           flex_align_cross: center
           flex_align_track: center
@@ -121,7 +121,7 @@ lvgl:
                           align: CENTER
                           id: media_btn_icon
                           styles: nav_icon_inactivate
-                          text: "\U000F1A9B" # mdi:multimedia
+                          text: "\U000F0954" # mdi:music-note
                     on_value:
                       - lambda: id(page_num) = 3;
                       - script.execute: nav_rail_update

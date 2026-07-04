@@ -110,6 +110,10 @@ script:
           condition:
             lambda: 'return phase == ${ui_phase_standby};'
           then:
+            - lambda: 'id(album_art_floating) = false;'
+            - lambda: 'id(dashboard_floating) = true;'
+            - script.stop: album_art_float
+            - script.execute: album_art_float
             - lvgl.page.show: dashboard_page
             - lvgl.widget.show: sidebars
       - if:
@@ -117,6 +121,9 @@ script:
             lambda: 'return phase == ${ui_phase_player_controls};'
           then:
             - lvgl.page.show: player_controls_page
+            - lambda: 'id(dashboard_floating) = false;'
+            - lambda: 'id(album_art_floating) = true;'
+            - script.execute: album_art_float
             - script.execute: player_controls_timeout
       - if:
           condition:
@@ -175,7 +182,6 @@ script:
           condition:
             and:
               - switch.is_on: standby_screen_timeout_enabled
-              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
               - lambda: 'return !id(timer_is_active);'
           then:
             - script.execute: standby_screen_timeout
@@ -189,7 +195,6 @@ script:
           condition:
             and:
               - switch.is_on: standby_screen_timeout_enabled
-              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
               - lambda: 'return !id(timer_is_active);'
           then:
             - lambda: |-
@@ -206,7 +211,6 @@ script:
           condition:
             and:
               - switch.is_on: standby_screen_timeout_enabled
-              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
               - lambda: 'return !id(timer_is_active);'
           then:
             - light.turn_on:
@@ -220,8 +224,8 @@ script:
           condition:
             and:
               - switch.is_on: standby_screen_timeout_enabled
-              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
               - lambda: 'return !id(timer_is_active);'
+              - lambda: 'return id(ui_phase) == ${ui_phase_standby};'
           then:
             - light.turn_off: Sled
             - lambda: 'id(screen_was_off) = true;'

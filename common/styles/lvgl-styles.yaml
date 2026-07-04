@@ -14,18 +14,23 @@ lvgl:
     height: 100%
 
   - id: nav_btn_container
-    bg_opa: TRANSP
+    bg_color: 0xE9EFEE
+    bg_opa: COVER
+    border_width: 0
     border_opa: TRANSP
-    width: 180
+    width: 192
     height: 150
 
   - id: nav_btn_inactivate
     bg_opa: TRANSP
     align: CENTER
-    width: 112
-    height: 64
-    radius: 48
+    width: 192
+    height: 110
+    radius: 0
+    border_width: 0
     border_opa: TRANSP
+    outline_width: 0
+    outline_opa: TRANSP
     shadow_opa: TRANSP
 
   - id: nav_icon_activate
