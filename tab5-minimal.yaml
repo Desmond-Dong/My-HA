@@ -865,14 +865,6 @@ media_player:
               lambda: 'return !id(tts_playing);'
             then:
               - script.execute: mp_idle_debounce
-              - speaker.stop: box_speaker
-              - delay: 500ms
-              - if:
-                  condition:
-                    not:
-                      voice_assistant.is_running:
-                  then:
-                    - micro_wake_word.start:
 
 micro_wake_word:
   id: mww

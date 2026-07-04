@@ -120,7 +120,7 @@ script:
                       args: ['id(saved_volume)']
                   - lambda: |-
                       id(is_muted) = false;
-                      lv_label_set_text(id(controls_mute_icon), "\U000F04C3");  // speaker icon
+                      lv_label_set_text(id(controls_mute_icon), "\U000F057E");  // volume-high icon
                   # Re-enable hardware based on output device FIRST
                   - if:
                       condition:
@@ -321,9 +321,21 @@ script:
           condition:
             and:
               - media_player.is_idle: external_media_player
-              - lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+              - lambda: 'return !id(tts_playing);'
           then:
-            - script.execute:
-                id: set_ui_phase
-                phase: ${ui_phase_standby}
+            - speaker.stop: box_speaker
+            - delay: 500ms
+            - if:
+                condition:
+                  not:
+                    voice_assistant.is_running:
+                then:
+                  - micro_wake_word.start:
+            - if:
+                condition:
+                  lambda: 'return id(ui_phase) != ${ui_phase_player_controls};'
+                then:
+                  - script.execute:
+                      id: set_ui_phase
+                      phase: ${ui_phase_standby}
 

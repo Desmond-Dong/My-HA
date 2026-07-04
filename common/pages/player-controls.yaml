@@ -201,7 +201,7 @@ lvgl:
                     - label:
                         id: controls_mute_icon
                         align: CENTER
-                        text: "\U000F04C3"
+                        text: "\U000F057E"
                         text_color: 0xFFFFFF
                         text_font: font_mdi_controls
 
