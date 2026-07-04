@@ -123,6 +123,7 @@ script:
             - lvgl.page.show: player_controls_page
             - lambda: 'id(dashboard_floating) = false;'
             - lambda: 'id(album_art_floating) = true;'
+            - script.stop: album_art_float
             - script.execute: album_art_float
             - script.execute: player_controls_timeout
       - if:

@@ -342,22 +342,25 @@ script:
   - id: album_art_float
     mode: restart
     then:
-      - delay: 8s
-      - lambda: |-
-          if (id(album_art_floating)) {
-            int range_x = 100;
-            int range_y = 40;
-            int16_t rx = (esp_random() % (range_x * 2 + 1)) - range_x;
-            int16_t ry = (esp_random() % (range_y * 2 + 1)) - range_y;
-            lv_obj_set_pos(id(controls_media_group), rx, ry);
-          }
-          if (id(dashboard_floating)) {
-            int range_x = 20;
-            int range_y = 15;
-            int16_t rx = (esp_random() % (range_x * 2 + 1)) - range_x;
-            int16_t ry = (esp_random() % (range_y * 2 + 1)) - range_y;
-            lv_obj_set_pos(id(time_label), rx, -100 + ry);
-            lv_obj_set_pos(id(date_label2), rx, 30 + ry);
-          }
-      - script.execute: album_art_float
+      - while:
+          condition:
+            lambda: 'return id(album_art_floating) || id(dashboard_floating);'
+          then:
+            - lambda: |-
+                if (id(album_art_floating)) {
+                  int range_x = 100;
+                  int range_y = 40;
+                  int16_t rx = (esp_random() % (range_x * 2 + 1)) - range_x;
+                  int16_t ry = (esp_random() % (range_y * 2 + 1)) - range_y;
+                  lv_obj_set_pos(id(controls_media_group), rx, ry);
+                }
+                if (id(dashboard_floating)) {
+                  int range_x = 20;
+                  int range_y = 15;
+                  int16_t rx = (esp_random() % (range_x * 2 + 1)) - range_x;
+                  int16_t ry = (esp_random() % (range_y * 2 + 1)) - range_y;
+                  lv_obj_set_pos(id(time_label), rx, -100 + ry);
+                  lv_obj_set_pos(id(date_label2), rx, 30 + ry);
+                }
+            - delay: 8s
 
