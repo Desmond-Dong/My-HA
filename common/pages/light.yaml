@@ -11,14 +11,7 @@ lvgl:
               grid_columns: [fr(1), fr(1)]
               pad_row: 24
               pad_column: 24
-
             widgets:
-              - label:
-                  styles: nav_label_inactivate
-                  text_font: font_cjk_28
-                  text: "房间"
-                  grid_cell_row_pos: 0
-                  grid_cell_column_pos: 0
               - obj:
                   id: light_click_area
                   styles: card_sm
@@ -26,44 +19,49 @@ lvgl:
                   grid_cell_column_pos: 0
                   grid_cell_x_align: STRETCH
                   clickable: true
-                  on_press:
-                    - logger.log: "Demo Light Area Clicked!"
-                    - lvgl.widget.show: light_card_modal_container
-                    - lvgl.widget.hide: color_palette_canvas
-                    - lvgl.widget.hide: color_palette_indicator
-                    - lvgl.widget.show: light_slider
+                  on_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: ${light_entity}
                   widgets:
-                    - button:
-                        styles: card_sm_icon_btn
-                        id: light_btn
-                        checkable: true
-                        state:
-                          checked: false
-                        checked:
-                          bg_color: 0xFDF3D8    # Dim yellow
-                        widgets:
-                          - label:
-                              id: light_label
-                              text_font: extra_icon
-                              text_color: 0X9E9E9E
-                              text: "\U000F18DE"
-                              align: CENTER
-                        on_short_click:
-                          - logger.log: "Toggle the light!"
-                          - homeassistant.action:
-                              action: light.toggle
-                              data:
-                                entity_id: ${light_entity}
+                    - label:
+                        text_font: extra_icon
+                        text_color: 0x9E9E9E
+                        text: "\U000F18DE"
+                        align: LEFT_MID
+                        x: 20
+                        y: 0
+                        id: light_icon_label
 
                     - label:
                         text_font: font_cjk_28
                         styles: card_sm_main_label
-                        text: "客厅"
-                    - label:
-                        text_font: font_cjk_28
-                        styles: card_sm_sub_label
-                        id: light_status
-                        text: "关"
+                        id: light_main_label
+                        text: ""
+
+                    - switch:
+                        id: light_btn
+                        width: 90
+                        height: 48
+                        radius: 24
+                        bg_color: 0x606060
+                        align: RIGHT_MID
+                        x: -20
+                        on_value:
+                          - if:
+                              condition:
+                                lambda: 'return x;'
+                              then:
+                                - homeassistant.action:
+                                    action: light.turn_on
+                                    data:
+                                      entity_id: ${light_entity}
+                              else:
+                                - homeassistant.action:
+                                    action: light.turn_off
+                                    data:
+                                      entity_id: ${light_entity}
         - label:
             x: 220
             y: 40

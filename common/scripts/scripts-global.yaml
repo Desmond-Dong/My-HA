@@ -152,6 +152,18 @@ script:
       - script.stop: standby_screen_timeout
       - if:
           condition:
+            lambda: 'return id(screen_was_off);'
+          then:
+            - lambda: |-
+                id(screen_was_off) = false;
+                switch (id(page_num)) {
+                  case 0: lv_obj_send_event(id(dash_panel_btn), LV_EVENT_PRESSED, NULL); break;
+                  case 1: lv_obj_send_event(id(light_panel_btn), LV_EVENT_PRESSED, NULL); break;
+                  case 2: lv_obj_send_event(id(climate_panel_btn), LV_EVENT_PRESSED, NULL); break;
+                  default: lv_obj_send_event(id(media_panel_btn), LV_EVENT_PRESSED, NULL); break;
+                }
+      - if:
+          condition:
             lambda: 'return id(screen_timeout_dimmed);'
           then:
             - light.turn_on:
@@ -212,3 +224,5 @@ script:
               - lambda: 'return !id(timer_is_active);'
           then:
             - light.turn_off: Sled
+            - lambda: 'id(screen_was_off) = true;'
+            - lvgl.page.show: black_page

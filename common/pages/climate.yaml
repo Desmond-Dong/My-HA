@@ -12,12 +12,6 @@ lvgl:
               pad_row: 24
               pad_column: 24
             widgets:
-              - label:
-                  styles: nav_label_inactivate
-                  text_font: font_cjk_28
-                  text: "客厅"
-                  grid_cell_row_pos: 0
-                  grid_cell_column_pos: 0
               - obj:
                   styles: card_md
                   clickable: true

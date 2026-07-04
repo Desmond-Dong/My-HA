@@ -1,6 +1,10 @@
 # Idle Page (Screensaver)
 lvgl:
   pages:
+    - id: black_page
+      bg_color: 0x000000
+      widgets: []
+
     - id: idle_page
       bg_color: 0x000000
       widgets:

@@ -148,3 +148,7 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: screen_was_off
+    type: bool
+    restore_value: no
+    initial_value: "false"

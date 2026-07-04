@@ -121,7 +121,7 @@ lvgl:
                           align: CENTER
                           id: media_btn_icon
                           styles: nav_icon_inactivate
-                          text: "\U000F040A" # mdi:play-circle-outline
+                          text: "\U000F1A9B" # mdi:multimedia
                     on_value:
                       - lambda: id(page_num) = 3;
                       - script.execute: nav_rail_update
