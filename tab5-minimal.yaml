@@ -91,6 +91,7 @@ packages:
   page_idle: !include common/pages/idle.yaml
   page_player_controls: !include common/pages/player-controls.yaml
   page_sendspin: !include common/pages/sendspin.yaml
+  page_settings: !include common/pages/settings.yaml
   # Scripts
   scripts_global: !include common/scripts/scripts-global.yaml
   scripts_light: !include common/scripts/scripts-light.yaml
@@ -139,15 +140,18 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
-    ssid: Tab5 Fallback Hotspot
+    ssid: Tab5-Setup
     password: !secret wifi_password
-
   on_connect: 
     then:
       - lvgl.widget.show: wifi_icon_label
   on_disconnect: 
     then:
       - lvgl.widget.hide: wifi_icon_label
+
+captive_portal:
+
+improv_serial:
 
 i2c:
   - id: bsp_bus

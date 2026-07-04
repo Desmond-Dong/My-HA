@@ -2,9 +2,13 @@
 lvgl:
   pages:
     - id: climate_page
+      scrollable: false
+      bg_color: 0xFFFFFF
       widgets:
         - obj:
+            id: climate_content
             styles: content_container
+            scrollable: false
             layout:
               type: grid
               grid_rows: [fr(10), fr(40), fr(10), fr(40)]
@@ -44,6 +48,7 @@ lvgl:
                               text_font: font_cjk_28
                               text: "关"   
                     - obj:
+                        id: climate_control_bar
                         styles: climate_control_bg
                         scrollable: false
                         widgets:
@@ -58,7 +63,6 @@ lvgl:
                               widgets:
                                 - label:
                                     align: LEFT_MID
-                                    text_color: 0x5E5E5E
                                     text_font: montserrat_48
                                     text: "-"
                               
@@ -76,12 +80,10 @@ lvgl:
                               value: 180  # Scale down to 18.0
                               text_align: CENTER
                               text_font: montserrat_32
-                              text_color: 0x3F4948
                               bg_opa: TRANSP
                               border_width: 0
                               cursor:
                                 bg_opa: transp
-                                text_color: 0x3F4948
                               on_value:
                                 # use lvgl.arc.update will result a crash
                                 - lambda: |-
@@ -94,7 +96,6 @@ lvgl:
                                 - lambda: id(set_ac_temp)->execute(x);
                           - label:
                               align: CENTER
-                              text_color: 0x3F4948
                               text_font: montserrat_32
                               x: 20
                               text: "°C"
@@ -109,7 +110,6 @@ lvgl:
                               widgets:
                                 - label:
                                     align: RIGHT_MID
-                                    text_color: 0x5E5E5E
                                     text_font: montserrat_48
                                     text: "+"
         - label:

@@ -10,17 +10,124 @@ script:
             id(dash_panel_btn),
             id(light_panel_btn),
             id(climate_panel_btn),
-            id(media_panel_btn)
+            id(media_panel_btn),
+            id(settings_panel_btn)
           };
           for (auto* btn : btns) {
             lv_obj_set_ext_click_area(btn, 180);
           }
-  
+
+  - id: apply_theme
+    # Apply light or dark theme based on the dark_mode global.
+    # Sets page bg, content text color, sidebar bg, modal/card bg.
+    then:
+      - lambda: |-
+          const bool dark = id(dark_mode);
+          // Layered grays so elements never blend into their background:
+          // page(1A) < sidebar(10) < card(2E) < control(3A) < nav highlight(teal)
+          const lv_color_t page_bg      = dark ? lv_color_hex(0x1A1A1A) : lv_color_hex(0xFFFFFF);
+          const lv_color_t sidebar_bg   = dark ? lv_color_hex(0x101010) : lv_color_hex(0xE9EFEE);
+          const lv_color_t card_bg      = dark ? lv_color_hex(0x2E2E2E) : lv_color_hex(0xFFFFFF);
+          const lv_color_t ctrl_bg      = dark ? lv_color_hex(0x3A3A3A) : lv_color_hex(0xECECEC);
+          const lv_color_t btn_grp_bg   = dark ? lv_color_hex(0x3A3A3A) : lv_color_hex(0xF3F4F4);
+          const lv_color_t iconbtn_bg   = dark ? lv_color_hex(0x4A4A4A) : lv_color_hex(0xECECEC);
+          const lv_color_t nav_chk_bg   = dark ? lv_color_hex(0x3A5F5F) : lv_color_hex(0xCCE8E7);
+          const lv_color_t nav_chk_border = dark ? lv_color_hex(0x66CCBB) : lv_color_hex(0xCCE8E7);
+          const lv_color_t text_color   = dark ? lv_color_hex(0xE8E8E8) : lv_color_hex(0x3F4948);
+          const lv_color_t dash_text    = dark ? lv_color_hex(0xF5F5F5) : lv_color_hex(0x3F4948);
+
+          // Pages: set bg_color via .obj (page wraps an lv_obj_t)
+          lv_obj_t* pages[] = {
+            id(dashboard_page).obj, id(light_page).obj, id(climate_page).obj,
+            id(settings_page).obj
+          };
+          for (auto* p : pages) {
+            if (p == nullptr) continue;
+            lv_obj_set_style_bg_color(p, page_bg, 0);
+            lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(p, text_color, 0);
+          }
+
+          // Sidebar wrapper + direct children (nav_btn_container objs)
+          lv_obj_set_style_bg_color(id(sidebars), sidebar_bg, 0);
+          lv_obj_set_style_text_color(id(sidebars), text_color, 0);
+          uint32_t n = lv_obj_get_child_cnt(id(sidebars));
+          for (uint32_t i = 0; i < n; i++) {
+            lv_obj_t* child = lv_obj_get_child(id(sidebars), i);
+            lv_obj_set_style_bg_color(child, sidebar_bg, 0);
+          }
+
+          // Nav buttons: checked bg_color + visible border (highlighted state)
+          lv_obj_t* nav_btns[] = {
+            id(dash_panel_btn), id(light_panel_btn), id(climate_panel_btn),
+            id(media_panel_btn), id(settings_panel_btn)
+          };
+          const lv_style_selector_t sel_checked = (lv_style_selector_t)(LV_PART_MAIN) | (lv_style_selector_t)(LV_STATE_CHECKED);
+          for (auto* b : nav_btns) {
+            lv_obj_set_style_bg_color(b, nav_chk_bg, sel_checked);
+            lv_obj_set_style_bg_opa(b, LV_OPA_COVER, sel_checked);
+            lv_obj_set_style_border_color(b, nav_chk_border, sel_checked);
+            lv_obj_set_style_border_width(b, 2, sel_checked);
+            lv_obj_set_style_border_opa(b, LV_OPA_COVER, sel_checked);
+          }
+
+          // Content containers - transparent (page bg shows through)
+          lv_obj_t* containers[] = {
+            id(dashboard_content), id(light_content), id(climate_content),
+            id(settings_content)
+          };
+          for (auto* c : containers) {
+            if (c == nullptr) continue;
+            lv_obj_set_style_text_color(c, text_color, 0);
+          }
+
+          // Dashboard labels: explicit text color (high contrast)
+          lv_obj_t* dash_labels[] = {
+            id(temp_label), id(humi_label), id(temp_icon_label), id(humi_icon_label),
+            id(time_label), id(date_label2)
+          };
+          for (auto* l : dash_labels) {
+            if (l == nullptr) continue;
+            lv_obj_set_style_text_color(l, dash_text, 0);
+          }
+
+          // Modal cards (card_lg instances) - bg + text inherit
+          lv_obj_t* cards[] = { id(modal_light_card), id(modal_ac_card) };
+          for (auto* card : cards) {
+            if (card == nullptr) continue;
+            lv_obj_set_style_bg_color(card, card_bg, 0);
+            lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(card, text_color, 0);
+          }
+
+          // Light modal: button group, slider, icon buttons (card_md_icon_btn style)
+          if (id(light_modal_btn_group) != nullptr)
+            lv_obj_set_style_bg_color(id(light_modal_btn_group), btn_grp_bg, 0);
+          if (id(light_slider) != nullptr)
+            lv_obj_set_style_bg_color(id(light_slider), ctrl_bg, 0);
+          // Power/brightness/color buttons inside light modal
+          lv_obj_t* light_icon_btns[] = { id(light_pwr_btn), id(bright_ctrl_btn), id(color_palette_btn) };
+          for (auto* b : light_icon_btns) {
+            if (b == nullptr) continue;
+            lv_obj_set_style_bg_color(b, iconbtn_bg, 0);
+          }
+
+          // Climate control bar + AC modal icon buttons
+          if (id(climate_control_bar) != nullptr)
+            lv_obj_set_style_bg_color(id(climate_control_bar), ctrl_bg, 0);
+          lv_obj_t* ac_btns[] = { id(temp_spin_down), id(temp_spin_up) };
+          for (auto* b : ac_btns) {
+            if (b == nullptr) continue;
+            lv_obj_set_style_bg_color(b, iconbtn_bg, 0);
+          }
+
+          // Dark mode switch icon on settings page (sun/moon)
+          lv_label_set_text(id(dark_mode_icon),
+            dark ? "\U000F067C" : "\U000F0599");
+
   - id: nav_rail_update
-    # Update the navigation rail UI to reflect the current page
-    # selection. This sets the checked state on the correct nav button,
-    # updates the icon to the active/inactive glyph, and applies the
-    # appropriate label style (active/inactive color).
+    # Set the checked state on the correct nav button, update the icon,
+    # and apply the active/inactive label style based on the current page.
     then:
       - lambda: |-
           const int active = id(page_num);
@@ -28,31 +135,36 @@ script:
               id(dash_panel_btn), 
               id(light_panel_btn), 
               id(climate_panel_btn),
-              id(media_panel_btn)
+              id(media_panel_btn),
+              id(settings_panel_btn)
           };
           lv_obj_t* icons[] = { 
               id(dash_btn_icon), 
               id(light_btn_icon), 
               id(climate_btn_icon),
-              id(media_btn_icon)
+              id(media_btn_icon),
+              id(settings_btn_icon)
           };
           lv_obj_t* labels[] = { 
               id(dash_btn_label), 
               id(light_btn_label), 
               id(climate_btn_label),
-              id(media_btn_label)
+              id(media_btn_label),
+              id(settings_btn_label)
           };
           const char* icon_unchecked[] = {
               "\U000F0A1D", // dashboard-outline
               "\U000F0336", // lightbulb-outline
               "\U000F0F55", // thermometer-outline
-              "\U000F040A"  // play-circle-outline
+              "\U000F040A",  // play-circle-outline
+              "\U000F08BB"   // cog-outline
           };
           const char* icon_checked[] = {
               "\U000F056E", // dashboard
               "\U000F0335", // lightbulb
               "\U000F0F54", // thermometer
-              "\U000F040C"  // play-circle (filled)
+              "\U000F040C", // play-circle (filled)
+              "\U000F0493"  // cog (settings)
           };
 
           const int count = sizeof(buttons) / sizeof(buttons[0]);
@@ -168,6 +280,7 @@ script:
                   case 0: lv_obj_send_event(id(dash_panel_btn), LV_EVENT_PRESSED, NULL); break;
                   case 1: lv_obj_send_event(id(light_panel_btn), LV_EVENT_PRESSED, NULL); break;
                   case 2: lv_obj_send_event(id(climate_panel_btn), LV_EVENT_PRESSED, NULL); break;
+                  case 4: lv_obj_send_event(id(settings_panel_btn), LV_EVENT_PRESSED, NULL); break;
                   default: lv_obj_send_event(id(media_panel_btn), LV_EVENT_PRESSED, NULL); break;
                 }
       - if:

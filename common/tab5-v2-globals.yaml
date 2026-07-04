@@ -160,3 +160,7 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: dark_mode
+    type: bool
+    restore_value: yes
+    initial_value: "false"

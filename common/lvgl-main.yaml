@@ -5,5 +5,14 @@ lvgl:
     - script.execute: expand_nav_btn_click_area
     - script.execute: nav_rail_update
     - script.execute: sync_ha
+    - if:
+        condition:
+          lambda: 'return id(dark_mode);'
+        then:
+          - lvgl.widget.update:
+              id: dark_mode_switch
+              state:
+                checked: true
+    - script.execute: apply_theme
   rotation: 90
   byte_order: little_endian

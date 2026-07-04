@@ -1,0 +1,54 @@
+# Settings Page
+lvgl:
+  pages:
+    - id: settings_page
+      scrollable: false
+      bg_color: 0xFFFFFF
+      widgets:
+        - obj:
+            id: settings_content
+            styles: content_container
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: COLUMN
+              pad_row: 24
+              flex_align_main: START
+              flex_align_cross: START
+            widgets:
+              # Dark mode toggle row
+              - obj:
+                  width: 400
+                  height: 112
+                  radius: 24
+                  styles: card_sm
+                  layout:
+                    type: FLEX
+                    flex_flow: ROW
+                    flex_align_main: SPACE_BETWEEN
+                    flex_align_cross: CENTER
+                    pad_column: 24
+                  widgets:
+                    - label:
+                        id: dark_mode_icon
+                        text_font: extra_icon
+                        text_color: 0x9E9E9E
+                        text: "\U000F0599" # weather-sunny (light mode)
+                    - label:
+                        text_font: font_cjk_28
+                        text: "暗色模式"
+                    - switch:
+                        id: dark_mode_switch
+                        width: 90
+                        height: 48
+                        radius: 24
+                        bg_color: 0x606060
+                        on_value:
+                          - lambda: id(dark_mode) = x;
+                          - script.execute: apply_theme
+
+        - label:
+            x: 220
+            y: 40
+            text_font: font_cjk_28
+            text: "设置"

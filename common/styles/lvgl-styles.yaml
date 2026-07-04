@@ -6,7 +6,7 @@ lvgl:
     bg_color: 0xE9EFEE
     bg_opa: COVER
     border_opa: TRANSP
-    pad_top: 30
+    pad_top: 0
     pad_left: 0
     pad_right: 0
     radius: 0
@@ -19,7 +19,7 @@ lvgl:
     border_width: 0
     border_opa: TRANSP
     width: 192
-    height: 150
+    height: 140
 
   - id: nav_btn_inactivate
     bg_opa: TRANSP
@@ -55,7 +55,7 @@ lvgl:
 
   - id: content_container
     align: CENTER
-    bg_opa: COVER
+    bg_opa: TRANSP
     border_opa: TRANSP
     height: 100%
     width: 1080
@@ -69,6 +69,8 @@ lvgl:
     width: 400
     height: 112
     radius: 24
+    bg_opa: TRANSP
+    border_opa: TRANSP
 
   - id: card_sm_icon_btn
     width: 72
@@ -83,16 +85,18 @@ lvgl:
     align: TOP_LEFT
     x: 92
     y: 5
-    
+
   - id: card_sm_sub_label
     text_font: montserrat_24
     align: BOTTOM_LEFT
     x: 92
-  
+
   - id: card_md
     width: 400
     height: 240
     radius: 24
+    bg_opa: TRANSP
+    border_opa: TRANSP
 
   - id: card_md_icon_btn
     width: 72
@@ -107,12 +111,12 @@ lvgl:
     align: TOP_LEFT
     x: 92
     y: 5
-    
+
   - id: card_md_sub_label
     text_font: montserrat_24
     x: 92
     y: 60
-  
+
   # Large card container for modal
   - id: card_lg
     width: 800
@@ -120,6 +124,9 @@ lvgl:
     radius: 24
     align: CENTER
     opa: 1
+    bg_color: 0xFFFFFF
+    bg_opa: COVER
+    border_opa: TRANSP
 
   - id: card_lg_icon_btn
     width: 72

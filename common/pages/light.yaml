@@ -2,9 +2,13 @@
 lvgl:
   pages:
     - id: light_page
+      scrollable: false
+      bg_color: 0xFFFFFF
       widgets:
         - obj:
+            id: light_content
             styles: content_container
+            scrollable: false
             layout:
               type: grid
               grid_rows: [fr(10), fr(30), fr(30), fr(30)]

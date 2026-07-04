@@ -3,6 +3,7 @@ lvgl:
   pages:
     - id: dashboard_page
       scrollable: false
+      bg_color: 0xFFFFFF
       widgets:
         - obj:
             id: dashboard_content
@@ -37,6 +38,7 @@ lvgl:
                     pad_column: 24
                   widgets:
                     - label:
+                        id: temp_icon_label
                         text_font: extra_icon
                         text: "\U000F050F"
                         grid_cell_column_pos: 0 
@@ -52,6 +54,7 @@ lvgl:
                         grid_cell_x_align: START
                         grid_cell_y_align: CENTER
                     - label:
+                        id: humi_icon_label
                         text_font: extra_icon
                         text: "\U000F058E"
                         grid_cell_column_pos: 2 
