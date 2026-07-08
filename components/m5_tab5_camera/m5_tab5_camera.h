@@ -4,13 +4,13 @@
 
 #include <atomic>
 #include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/components/camera/camera.h"
 #include "esphome/core/helpers.h"
-#include "bsp/m5stack_tab5.h"
-#include "driver/jpeg_encode.h"
+
+struct jpeg_encoder_t;
+typedef struct jpeg_encoder_t *jpeg_encoder_handle_t;
 
 namespace esphome::m5_tab5_camera {
 

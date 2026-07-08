@@ -11,6 +11,8 @@
 #include <sys/mman.h>
 #include <linux/videodev2.h>
 #include <esp_heap_caps.h>
+#include <bsp/m5stack_tab5.h>
+#include <driver/jpeg_encode.h>
 
 // IDF private header for getting existing I2C bus handle (IDF v5.4+)
 #include <esp_private/i2c_platform.h>
