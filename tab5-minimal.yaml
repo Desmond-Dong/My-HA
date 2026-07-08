@@ -27,7 +27,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [st7121, st7123, sendspin, generic_image]
+    components: [st7121, st7123, sendspin, generic_image, m5_tab5_camera]
 
 esphome:
   name: ${name}
@@ -261,6 +261,13 @@ switch:
       pi4ioe5v6408: pi4ioe1
       number: 5
     restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: camera_power_enable
+    internal: true
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 6
+    restore_mode: ALWAYS_ON
   - platform: template
     id: standby_screen_timeout_enabled
     name: Standby screen timeout
@@ -422,6 +429,12 @@ select:
                 blue: 100%
 
 sensor:
+  - platform: wifi_signal
+    id: wifi_signal_strength
+    name: "WiFi Signal"
+    entity_category: diagnostic
+    update_interval: 30s
+
   - platform: internal_temperature
     id: esp32p4_temp
     name: "ESP32-P4 Internal Temperature"
@@ -962,6 +975,12 @@ time:
                 return t.strftime("%Y-%m-%d %a").c_str();
 
 text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: wifi_ip_address
+      name: "WiFi IP Address"
+      entity_category: diagnostic
+
   - platform: sendspin
     sendspin_id: sendspin_hub
     type: title
@@ -1087,4 +1106,13 @@ text_sensor:
           text:
             format: "%.1f °C"
             args: [ 'std::stof(x)' ]
+
+
   
+m5_tab5_camera:
+  id: tab5_cam
+  name: "Tab5 Camera"
+  resolution: "800X600"
+  jpeg_quality: 12
+  framerate: 10
+  internal: false
