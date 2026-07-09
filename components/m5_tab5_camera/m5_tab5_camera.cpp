@@ -233,13 +233,23 @@ bool M5Tab5Camera::init_camera_sensor_() {
     }
   }
 
-  // Use driver default format (G_FMT) — same approach as BSP app_video_open()
+  // Explicitly request RGB565 via S_FMT — this forces data through ISP debayer.
+  // Using G_FMT (driver default) may give raw unprocessed data.
   v4l2_format fmt;
   memset(&fmt, 0, sizeof(fmt));
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  if (ioctl(camera_fd_, VIDIOC_G_FMT, &fmt) < 0) {
-    ESP_LOGE(TAG, "VIDIOC_G_FMT failed: %s", strerror(errno));
-    return false;
+  fmt.fmt.pix.width = 1280;
+  fmt.fmt.pix.height = 720;
+  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB565;
+  fmt.fmt.pix.field = V4L2_FIELD_NONE;
+  if (ioctl(camera_fd_, VIDIOC_S_FMT, &fmt) < 0) {
+    ESP_LOGW(TAG, "VIDIOC_S_FMT RGB565 failed, falling back to G_FMT: %s", strerror(errno));
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(camera_fd_, VIDIOC_G_FMT, &fmt) < 0) {
+      ESP_LOGE(TAG, "VIDIOC_G_FMT also failed: %s", strerror(errno));
+      return false;
+    }
   }
   frame_width_  = (int)fmt.fmt.pix.width;
   frame_height_ = (int)fmt.fmt.pix.height;
@@ -369,12 +379,9 @@ uint8_t *M5Tab5Camera::capture_jpeg_frame_(size_t *out_len) {
     return nullptr;
   }
 
-  // Official Tab5 path uses RGB565 directly after the ISP pipeline. Keep the
-  // raw RGB565 pixel values intact and only rotate 180 degrees to match the
-  // UI orientation.
+  // Rotate 180° to match UI orientation.
   uint16_t *src16 = (uint16_t *)raw;
   uint16_t *dst16 = (uint16_t *)rgb565_convert_buf_;
-  uint32_t pixel_count = raw_len / 2U;
   for (int y = 0; y < frame_height_; y++) {
     for (int x = 0; x < frame_width_; x++) {
       uint32_t src_idx = (uint32_t)y * (uint32_t)frame_width_ + (uint32_t)x;

@@ -51,14 +51,9 @@ async def to_code(config):
     cg.add(var.set_framerate(config[CONF_FRAMERATE]))
 
     # Pull the official M5Stack Tab5 BSP via Component Manager.
+    # Camera-related sdkconfig is set from the main YAML so HA build picks it up
+    # deterministically; keep the component Python side minimal.
     add_idf_component(name="espressif/m5stack_tab5", ref="^1.2.0")
-
-    # Enable V4L2 + MIPI-CSI camera path on ESP32-P4
-    add_idf_sdkconfig_option("CONFIG_ESP_VIDEO_ENABLED", True)
-    add_idf_sdkconfig_option("CONFIG_ESP_CAM_SENSOR_ENABLED", True)
-    add_idf_sdkconfig_option("CONFIG_CAMERA_SC202CS", True)
-    add_idf_sdkconfig_option("CONFIG_CAMERA_SC202CS_AUTO_DETECT_MIPI_INTERFACE_SENSOR", True)
-    add_idf_sdkconfig_option("CONFIG_ESP_VIDEO_MIPI_CSI", True)
 
     # Hardware JPEG encoder (ESP32-P4 has a dedicated codec)
     add_idf_sdkconfig_option("CONFIG_JPEG_CONTROLLER_ENABLED", True)

@@ -124,18 +124,6 @@ globals:
     type: lv_obj_t*
     restore_value: no
     initial_value: "nullptr"
-  - id: accent_red
-    type: int
-    restore_value: yes
-    initial_value: "255"
-  - id: accent_green
-    type: int
-    restore_value: yes
-    initial_value: "255"
-  - id: accent_blue
-    type: int
-    restore_value: yes
-    initial_value: "0"
   - id: is_muted
     type: bool
     restore_value: no

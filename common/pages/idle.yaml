@@ -8,18 +8,6 @@ lvgl:
     - id: idle_page
       bg_color: 0x000000
       widgets:
-        - image:
-            id: standby_background_widget
-            align: TOP_MID
-            x: 0
-            y: 0
-            src: standby_background_image
-            width: ${imagewidth}
-            height: ${imageheight}
-            antialias: false
-            clickable: false
-            hidden: true
-
         - obj:
             id: idle_center_block
             align: CENTER

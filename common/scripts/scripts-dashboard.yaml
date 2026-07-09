@@ -53,9 +53,6 @@ script:
             lv_obj_add_flag(id(timer_progress_label), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(idle_timer_block), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(idle_center_block), LV_OBJ_FLAG_HIDDEN);
-            if (id(standby_background_enabled).state) {
-              lv_obj_clear_flag(id(standby_background_widget), LV_OBJ_FLAG_HIDDEN);
-            }
             return;
           }
 
