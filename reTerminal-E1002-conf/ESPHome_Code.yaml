@@ -1,30 +1,51 @@
+# =====================================================================
+# reTerminal E1002 (7.3" Spectra E6 六色墨水屏 800x480) — 原生绘制 UI
+#   左侧 : 时钟 / 日期 + 本机温湿度 / WiFi / 电池
+#   右侧 : 校园卡消费日报卡片（样式仿 dk-card-report.html），数据全部来自 HA
+# 可用颜色: 黑 / 白 / 红 / 绿 / 蓝 / 黄
+# =====================================================================
 esphome:
   name: e1002
   friendly_name: E1002
   on_boot:
     priority: 600
     then:
-      - delay: 20s
-      - component.update: dashboard_image
- #     - output.turn_on: bsp_sd_enable
+      - delay: 25s                       # 等 HA 数据到位后首次绘制
+      - component.update: epaper_display
       - output.turn_on: bsp_battery_enable
       - delay: 200ms
       - component.update: battery_voltage
       - component.update: battery_level
+      # 开关为关机状态时停掉开机自动开始的 BLE 扫描
+      - if:
+          condition:
+            lambda: 'return !id(ble_switch).state;'
+          then:
+            - lambda: 'id(ble_tracker)->stop_scan();'
+
+# ---------------------------------------------------------------------
+# ↓↓↓ 易校园集成实体 ↓↓↓
+substitutions:
+  card_balance_entity: "sensor.yi_xiao_yuan_xiao_yuan_qia_dong_zhe_nan_xiao_yuan_qia_yu_e"   # 卡内余额
+  card_today_total_entity: "sensor.yi_xiao_yuan_xiao_yuan_qia_dong_zhe_nan_jin_ri_xiao_fei"  # 今日消费
+  card_yesterday_entity: "sensor.yi_xiao_yuan_xiao_yuan_qia_dong_zhe_nan_zuo_ri_xiao_fei"    # 昨日消费
+  card_records_entity: "sensor.yi_xiao_yuan_xiao_yuan_qia_dong_zhe_nan_xiao_fei_ming_xi"     # 消费明细
+  weather_entity: "weather.he_feng_tian_qi"                                                  # 和风天气
 
 esp32:
   board: esp32-s3-devkitc-1
+  flash_size: 32MB          # reTerminal E1002 官方规格: 32MB Flash / 8MB PSRAM
   framework:
-    #type: arduino
     type: esp-idf
+    advanced:
+      # ESP-IDF 对 32MB flash 的支持被标记为实验性，OTA 必须开启此项
+      enable_idf_experimental_features: true
 
-# Enable logging
 logger:
 
-# Enable Home Assistant API
 api:
   encryption:
-    key: "your key"
+    key: !secret e1002__encryption_key
   services:
     - service: play_song
       variables:
@@ -46,7 +67,6 @@ api:
                 int dur  = atoi(note.substr(colon + 1).c_str());
 
                 if (freq > 0) {
-                  // ✅ 正确写法
                   bz->update_frequency(freq);
                   bz->set_level(0.6);
                 } else {
@@ -61,10 +81,10 @@ api:
 
             bz->set_level(0);
 
-# Allow Over-The-Air updates
 ota:
   - platform: esphome
     password: "your ota password"
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -72,70 +92,214 @@ wifi:
 psram:
   mode: octal
   speed: 80MHz
-#web_server:
-#  version: 3
+
+debug:
+  update_interval: 30s
+
 captive_portal:
 
-# External component for waveshare epaper
-#external_components:
-#  - source: github://lublak/esphome@pull/1/head
-#    components: [ waveshare_epaper ]
-
 esp32_ble_tracker:
+  id: ble_tracker
   scan_parameters:
-    # We currently use the defaults to ensure Bluetooth
-    # can co-exist with WiFi In the future we may be able to
-    # enable the built-in coexistence logic in ESP-IDF
     active: true
 
 bluetooth_proxy:
   active: true
 
-# Deep-sleep, wake by GPIO4
-#deep_sleep:
-#  id: deep_sleep_1
-#  run_duration: 1min
-#  sleep_duration: 10min
-#  wakeup_pin: GPIO4          # Right white button
-#  wakeup_pin_mode: INVERT_WAKEUP
-
-# SPI / I²C
 spi:
   clk_pin: GPIO7
   mosi_pin: GPIO9
+
 i2c:
   scl: GPIO20
   sda: GPIO19
+
+# ---------------------------------------------------------------------
+# 全局变量：消费记录表（最多 6 条，界面画 5 条）
+globals:
+  - id: rec_raw
+    type: std::string
+    restore_value: no
+  - id: rec_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: rec_today_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: rec_time
+    type: 'std::string[6]'
+    restore_value: no
+  - id: rec_place
+    type: 'std::string[6]'
+    restore_value: no
+  - id: rec_amount
+    type: 'std::string[6]'
+    restore_value: no
+  - id: rec_balance
+    type: 'std::string[6]'
+    restore_value: no
+  - id: fc_raw
+    type: std::string
+    restore_value: no
+  - id: fc_high
+    type: float
+    restore_value: no
+    initial_value: '0'
+  - id: fc_low
+    type: float
+    restore_value: no
+    initial_value: '0'
+  - id: fc_has_low
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: fc_valid
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: disp_count
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+script:
+
+  # 解析消费明细（HA 对列表属性发的是 Python str() 格式: [{'时间': '...'}, ...]）
+  - id: parse_records
+    mode: queued
+    then:
+      - lambda: |-
+          id(rec_count) = 0;
+          id(rec_today_count) = 0;
+          const std::string &raw = id(rec_raw);
+          auto nowp = id(sntp_time).now();
+          char today[16] = "";
+          if (nowp.is_valid())
+            snprintf(today, sizeof(today), "%04d-%02d-%02d", nowp.year, nowp.month, nowp.day_of_month);
+
+          // 取 'key': 'value' 的 value；数值型值走兜底分支
+          auto get_field = [](const std::string &rec, const std::string &key) -> std::string {
+            std::string pat = "'" + key + "': '";
+            size_t p = rec.find(pat);
+            if (p != std::string::npos) {
+              size_t v = p + pat.size();
+              size_t e = rec.find('\'', v);
+              if (e != std::string::npos) return rec.substr(v, e - v);
+            }
+            std::string pat2 = "'" + key + "': ";
+            size_t p2 = rec.find(pat2);
+            if (p2 != std::string::npos) {
+              size_t v = p2 + pat2.size();
+              size_t e = rec.find_first_of(",}", v);
+              if (e != std::string::npos) {
+                std::string val = rec.substr(v, e - v);
+                size_t b = val.find_first_not_of(' ');
+                if (b == std::string::npos) return "";
+                size_t t = val.find_last_not_of(' ');
+                return val.substr(b, t - b + 1);
+              }
+            }
+            return "";
+          };
+
+          size_t pos = 0;
+          while ((pos = raw.find("{'", pos)) != std::string::npos) {
+            size_t end = raw.find('}', pos);
+            size_t len = (end == std::string::npos ? raw.size() : end) - pos - 1;
+            std::string rec = raw.substr(pos + 1, len);
+
+            std::string t = get_field(rec, "时间");
+            // 时间未同步时不过滤，先显示最近的
+            bool is_today = (today[0] == 0) || (t.compare(0, 10, today) == 0);
+            if (is_today) {
+              if (id(rec_today_count) < 99) id(rec_today_count)++;
+              if (id(rec_count) < 6) {
+                int i = id(rec_count)++;
+                id(rec_time)[i]    = (t.size() >= 16) ? t.substr(11, 5) : t;
+                id(rec_place)[i]   = get_field(rec, "地点");
+                id(rec_amount)[i]  = get_field(rec, "金额");
+                id(rec_balance)[i] = get_field(rec, "余额");
+              }
+            }
+            if (end == std::string::npos) break;
+            pos = end + 1;
+          }
+
+  # 解析天气预报 forecast 属性的第一条（今天）
+  - id: parse_forecast
+    mode: queued
+    then:
+      - lambda: |-
+          const std::string &raw = id(fc_raw);
+          size_t p = raw.find("{'");
+          if (p == std::string::npos) return;
+          size_t e = raw.find('}', p);
+          if (e == std::string::npos) return;
+          std::string rec = raw.substr(p + 1, e - p - 1);
+          auto get_field = [](const std::string &r, const std::string &key) -> std::string {
+            std::string pat = "'" + key + "': '";
+            size_t q = r.find(pat);
+            if (q != std::string::npos) {
+              size_t v = q + pat.size();
+              size_t z = r.find('\'', v);
+              if (z != std::string::npos) return r.substr(v, z - v);
+            }
+            std::string pat2 = "'" + key + "': ";
+            size_t q2 = r.find(pat2);
+            if (q2 != std::string::npos) {
+              size_t v = q2 + pat2.size();
+              size_t z = r.find_first_of(",}", v);
+              if (z != std::string::npos) {
+                std::string val = r.substr(v, z - v);
+                size_t b = val.find_first_not_of(' ');
+                if (b == std::string::npos) return "";
+                size_t t = val.find_last_not_of(' ');
+                return val.substr(b, t - b + 1);
+              }
+            }
+            return "";
+          };
+          std::string hi = get_field(rec, "temperature");
+          std::string lo = get_field(rec, "templow");
+          id(fc_high) = atof(hi.c_str());
+          id(fc_low) = atof(lo.c_str());
+          id(fc_has_low) = !lo.empty();
+          id(fc_valid) = (!hi.empty() || !lo.empty());
+
+
 light:
-#  - platform: binary
-#    name: "Onboard LED"
-#    output: bsp_led
-#    id: onboard_led
   - platform: monochromatic
     icon: "mdi:volume-high"
     output: buzzer_pwm
     name: "Buzzer"
     id: buzzer
-    # Setting transition length to 0s makes the buzzer turn on and off instantly.
     default_transition_length: 0s
+
 switch:
   - platform: template
     name: "Refresh"
     id: refresh_display
     turn_on_action:
-      - component.update: dashboard_image
-      - delay: 200ms                   # 等待下载触发
+      - component.update: epaper_display
+      - delay: 200ms
       - switch.turn_off: refresh_display
-#  - platform: template
-#    name: "Force Deep Sleep"
-#    turn_on_action:
-#      - logger.log:
-#          format: "进入休眠 %d 分钟"
-#          args: [ 'id(sleep_minutes)' ]
-#      - deep_sleep.enter:
-#          id: deep_sleep_1
-#          sleep_duration: !lambda 'return (id(sleep_minutes) * 60000);'
+
+  # BLE 代理开关（HA 中可控制）：关闭后停止持续 BLE 扫描以省电
+  - platform: template
+    name: "BLE Proxy"
+    id: ble_switch
+    icon: "mdi:bluetooth"
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(ble_tracker)->start_scan();'
+    turn_off_action:
+      - lambda: 'id(ble_tracker)->stop_scan();'
+
 sensor:
+  # ---- 本机传感器 ----
   - platform: sht4x
     temperature:
       name: "Temperature"
@@ -146,11 +310,55 @@ sensor:
   - platform: wifi_signal
     name: "Wi-Fi Signal"
     id: wifi_signal1
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: debug
+    free:
+      name: "Heap Free"
+      entity_category: diagnostic
+    block:
+      name: "Heap Max Block"
+      entity_category: diagnostic
+    min_free:
+      name: "Heap Min Free"
+      entity_category: diagnostic
+    loop_time:
+      name: "Loop Time"
+      entity_category: diagnostic
+    psram:
+      name: "Free PSRAM"
+      entity_category: diagnostic
+    fragmentation:
+      name: "Heap Fragmentation"
+      entity_category: diagnostic
+    cpu_frequency:
+      name: "CPU Frequency"
+      entity_category: diagnostic
+  - platform: template
+    name: "Display Refresh Count"
+    id: disp_count_sensor
+    entity_category: diagnostic
+    icon: "mdi:refresh"
+    update_interval: 60s
+    lambda: 'return (float) id(disp_count);'
+  - platform: internal_temperature
+    name: "Chip Temperature"
+    id: chip_temp
+    entity_category: diagnostic
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
     update_interval: 60s
   - platform: adc
     pin: GPIO1
     name: "Battery Voltage"
     id: battery_voltage
+    entity_category: diagnostic
     update_interval: 60s
     attenuation: 12db
     filters:
@@ -181,40 +389,132 @@ sensor:
       - clamp:
           min_value: 0
           max_value: 100
+
+  # ---- 来自 HA 的校园卡数据 ----
+  - platform: homeassistant
+    id: card_balance
+    name: "Card Balance"
+    internal: true
+    entity_id: ${card_balance_entity}
+    unit_of_measurement: "元"
+    accuracy_decimals: 2
+  - platform: homeassistant
+    id: card_today_total
+    name: "Card Today Total"
+    internal: true
+    entity_id: ${card_today_total_entity}
+    unit_of_measurement: "元"
+    accuracy_decimals: 2
+  - platform: homeassistant
+    id: card_yesterday_total
+    name: "Card Yesterday Total"
+    internal: true
+    entity_id: ${card_yesterday_entity}
+    unit_of_measurement: "元"
+    accuracy_decimals: 2
+
+# ---------------------------------------------------------------------
+# 消费明细 text_sensor：读取「明细」属性（JSON 数组），解析出今天的记录
+# 明细格式（每条）：时间 / 地点 / 金额 / 余额 / 类型，时间 "2026-08-30 17:27:35"
+# 只保留今天的记录，最多显示 5 条；今日笔数从明细中统计
+text_sensor:
+  # ---- 诊断信息 ----
+  - platform: debug
+    device:
+      name: "Device Info"
+      entity_category: diagnostic
+    reset_reason:
+      name: "Reset Reason"
+      entity_category: diagnostic
+  - platform: uptime
+    name: "Uptime Human"
+    entity_category: diagnostic
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      entity_category: diagnostic
+    ssid:
+      name: "Connected SSID"
+      entity_category: diagnostic
+    bssid:
+      name: "Connected BSSID"
+      entity_category: diagnostic
+    dns_address:
+      name: "DNS Address"
+      entity_category: diagnostic
+    mac_address:
+      name: "MAC Address"
+      entity_category: diagnostic
+  - platform: version
+    name: "ESPHome Version"
+    entity_category: diagnostic
+
+  - platform: homeassistant
+    id: card_records
+    name: "Card Records"
+    internal: true
+    entity_id: ${card_records_entity}
+    attribute: "明细"
+    on_value:
+      then:
+        - lambda: |-
+            if (x == id(rec_raw)) return;   // 内容没变
+            id(rec_raw) = x;
+            id(parse_records).execute();
+
+  # 天气现象（实体状态: sunny/rainy/... ）
+  - platform: homeassistant
+    id: weather_condition
+    name: "Weather Condition"
+    internal: true
+    entity_id: ${weather_entity}
+
+  # 天气预报（列表属性，取第一条: 今天的高温/低温）
+  - platform: homeassistant
+    id: weather_forecast
+    name: "Weather Forecast"
+    internal: true
+    entity_id: ${weather_entity}
+    attribute: "forecast"
+    on_value:
+      then:
+        - lambda: |-
+            id(fc_raw) = x;
+            id(parse_forecast).execute();
+
+button:
+  - platform: restart
+    name: "Restart"
+    entity_category: diagnostic
+
 output:
-#  - platform: gpio
-#    pin: GPIO6
-#    id: bsp_led
-#    inverted: true
-#  - platform: gpio
-#    pin: GPIO16
-#    id: bsp_sd_enable
   - platform: gpio
     pin: GPIO21
     id: bsp_battery_enable
-  - platform: ledc   # CORRECTED: 'ledc' is the correct platform for ESP32 PWM.
+  - platform: ledc
     pin: GPIO45
     id: buzzer_pwm
-    # The frequency determines the pitch of the buzzer's sound. 1000Hz is a mid-range tone.
     frequency: 1000Hz
 
-          
 binary_sensor:
-  - platform: gpio    # Next page
+  - platform: status
+    name: "API Connected"
+    entity_category: diagnostic
+  - platform: gpio
     pin:
       number: GPIO3
       mode: INPUT_PULLUP
       inverted: true
     id: key1
     name: "Key1"
-  - platform: gpio     # Prev page
+  - platform: gpio
     pin:
       number: GPIO4
       mode: INPUT_PULLUP
       inverted: true
     id: key2
     name: "Key2"
-  - platform: gpio     # Prev page
+  - platform: gpio
     pin:
       number: GPIO5
       mode: INPUT_PULLUP
@@ -222,83 +522,131 @@ binary_sensor:
     id: key3
     name: "Key3"
     on_press:
-      - component.update: dashboard_image
-
-  # - platform: gpio
-  #   pin:
-  #     number: GPIO4
-  #     mode: INPUT_PULLUP
-  #     inverted: true
-  #   id: key2
-  #   name: "Key2"
-  #   on_press:
-  #     then:
-  #       - lambda: |-
-  #           id(page_index) = (id(page_index) - 1 + 3) % 3;
-  #           id(epaper_display).update();
-
-# Home Assistant time
-#time:
-#  - platform: homeassistant
-#    id: ha_time
-#globals:
-#  - id: sleep_minutes
-#    type: int
-#    restore_value: no
-#    initial_value: '0'
-
-##number:
- # - platform: template
-#    name: "Sleep Minutes"
-#    id: sleep_minutes_number
-#    optimistic: true
-#    min_value: 1
-#    max_value: 360
-#    step: 1
-#    set_action:
-#      - lambda: |-
-#          id(sleep_minutes) = (int)x;
-
-
-
-
-#deep_sleep:
-#  id: deep_sleep_1
-
-http_request:
-  verify_ssl: false
-  timeout: 20s
-  watchdog_timeout: 25s
+      - component.update: epaper_display
 
 time:
   - platform: sntp
     id: sntp_time
     timezone: Asia/Shanghai
+    on_time_sync:
+      # 时间同步后重新解析明细（处理数据先于时间到达的情况）
+      then:
+        - script.execute: parse_records
     on_time:
-      # 每个整点触发
+      # 每个整点触发（1~6 点不刷新）
       - seconds: 0
         minutes: 0
         then:
           - if:
               condition:
-                # 判断小时数不是 1~6
                 lambda: |-
                   auto now = id(sntp_time).now();
                   return !(now.hour >= 1 && now.hour < 6);
               then:
-                # 仅非 1~6 点执行更新
-                - component.update: dashboard_image
-# 在线图片获取
-online_image:
-  - id: dashboard_image
-    format: PNG
-    type: RGB565
-    buffer_size: 65536
-    url: http://YOUR_IP:10000/lovelace/2?viewport=800x480&format=png&lang=zh-cn
-    on_download_finished:
-      - component.update: epaper_display
+                - component.update: epaper_display
 
-# 墨水屏显示
+# ---------------------------------------------------------------------
+# 字体（本地 fonts/ 目录，无需联网下载）
+# 数字用 Black，标题/强调用 Bold，辅助信息用 Regular
+# 注意: glyphs 是"白名单"，只包含界面用到的字符；新增固定文案时记得补字。
+# font_glyphs_cjk.yaml 为全量 CJK 字表（已按 NotoSansSC 实际覆盖过滤），供动态内容(消费地点)使用。
+# ---------------------------------------------------------------------
+font:
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_date
+    size: 24
+    glyphs: "0123456789 年月日星期一二三四五六"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Black.ttf
+    id: f_clock
+    size: 18
+    glyphs: "0123456789:-"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_weather
+    size: 36
+    glyphs: ""
+    extras:
+      - file:
+          type: local
+          path: fonts/materialdesignicons-webfont.ttf
+        glyphs:
+          - "\U000F0599"  # weather-sunny
+          - "\U000F0594"  # weather-night
+          - "\U000F0595"  # weather-partly-cloudy
+          - "\U000F0590"  # weather-cloudy
+          - "\U000F0591"  # weather-fog
+          - "\U000F0592"  # weather-hail
+          - "\U000F0593"  # weather-lightning
+          - "\U000F067E"  # weather-lightning-rainy
+          - "\U000F0596"  # weather-pouring
+          - "\U000F0597"  # weather-rainy
+          - "\U000F0598"  # weather-snowy
+          - "\U000F067F"  # weather-snowy-rainy
+          - "\U000F059D"  # weather-windy
+          - "\U000F059E"  # weather-windy-variant
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_title
+    size: 20
+    glyphs: "校园卡消费日报"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Black.ttf
+    id: f_big
+    size: 28
+    glyphs: "0123456789.-"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_sect
+    size: 17
+    glyphs: "今日消费"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_mon
+    size: 20
+    glyphs: "昨日消费0123456789.元"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Medium.ttf
+    id: f_label
+    size: 16
+    glyphs: "卡余额元室内温度湿电池昨日消费Wi-F"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_val
+    size: 20
+    glyphs: "0123456789.-%°Cd Bm"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Medium.ttf
+    id: f_small
+    size: 12
+    glyphs: "0123456789-.: ·共元笔时间地点金额余EPSHome高低°"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_th
+    size: 15
+    glyphs: "时间地点金额余"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Medium.ttf
+    id: f_body
+    size: 15
+    glyphs: !include font_glyphs_cjk.yaml
+
+# ---------------------------------------------------------------------
+# 墨水屏显示（六色: 黑/白/红/绿/蓝/黄）
+# ---------------------------------------------------------------------
 display:
   - platform: epaper_spi
     id: epaper_display
@@ -311,6 +659,161 @@ display:
     busy_pin:
       number: GPIO13
       inverted: true
-    update_interval: never   # 不自动刷新，靠 on_time 来触发
+    update_interval: never   # 手动刷新：整点 / 按键 / Refresh 开关 / HA 数据变化
     lambda: |-
-      it.image(0, 0, id(dashboard_image));
+      id(disp_count)++;                     // 刷新次数统计（诊断）
+      auto BLACK = Color(0, 0, 0);
+      auto WHITE = Color(255, 255, 255);
+      auto RED   = Color(255, 0, 0);
+      auto GREEN = Color(0, 255, 0);
+      auto BLUE  = Color(0, 0, 255);
+      auto YELLOW = Color(255, 255, 0);
+      it.fill(WHITE);
+
+      // 圆角矩形填充（HTML 圆角 20px/16px 的近似）
+      auto round_fill = [&](int x, int y, int wd, int ht, int r, Color c) {
+        it.filled_rectangle(x + r, y, wd - 2 * r, ht, c);
+        it.filled_rectangle(x, y + r, r, ht - 2 * r, c);
+        it.filled_rectangle(x + wd - r, y + r, r, ht - 2 * r, c);
+        it.filled_circle(x + r, y + r, r, c);
+        it.filled_circle(x + wd - r - 1, y + r, r, c);
+        it.filled_circle(x + r, y + ht - r - 1, r, c);
+        it.filled_circle(x + wd - r - 1, y + ht - r - 1, r, c);
+      };
+      // 圆角描边（thick=1/2）
+      auto round_frame = [&](int x, int y, int wd, int ht, int r, int thick) {
+        round_fill(x, y, wd, ht, r, BLACK);
+        round_fill(x + thick, y + thick, wd - 2 * thick, ht - 2 * thick,
+                   r - thick > 0 ? r - thick : 1, WHITE);
+      };
+
+      auto now = id(sntp_time).now();
+      static const char *WDS[7] = {"日", "一", "二", "三", "四", "五", "六"};
+      const char *wd = now.is_valid() ? WDS[(now.day_of_week - 1 + 7) % 7] : "";
+
+      // ============ 左侧：日期 / 时间（蓝底白字）============
+      round_fill(12, 12, 292, 84, 10, BLUE);
+      if (now.is_valid()) {
+        it.printf(158, 20, id(f_date), WHITE, display::TextAlign::TOP_CENTER, "%d年%d月%d日 星期%s", now.year, now.month, now.day_of_month, wd);
+        it.printf(158, 54, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "%02d:%02d", now.hour, now.minute);
+      } else {
+        it.printf(158, 54, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "--:--");
+      }
+
+      const int lx = 24, rx = 294;
+
+      // 天气：大图标 + 今日高/低温（不显示实时温度与文字描述）
+      std::string wst = id(weather_condition).state;
+      std::string wicon = "";
+      if (wst == "sunny") { wicon = "\U000F0599"; }
+      else if (wst == "clear-night") { wicon = "\U000F0594"; }
+      else if (wst == "partlycloudy") { wicon = "\U000F0595"; }
+      else if (wst == "cloudy") { wicon = "\U000F0590"; }
+      else if (wst == "fog") { wicon = "\U000F0591"; }
+      else if (wst == "hail") { wicon = "\U000F0592"; }
+      else if (wst == "lightning") { wicon = "\U000F0593"; }
+      else if (wst == "lightning-rainy") { wicon = "\U000F067E"; }
+      else if (wst == "pouring") { wicon = "\U000F0596"; }
+      else if (wst == "rainy") { wicon = "\U000F0597"; }
+      else if (wst == "snowy") { wicon = "\U000F0598"; }
+      else if (wst == "snowy-rainy") { wicon = "\U000F067F"; }
+      else if (wst == "windy") { wicon = "\U000F059D"; }
+      else if (wst == "windy-variant") { wicon = "\U000F059E"; }
+      if (!wicon.empty())
+        it.printf(lx, 112, id(f_weather), BLUE, display::TextAlign::TOP_LEFT, "%s", wicon.c_str());
+      if (id(fc_valid)) {
+        if (id(fc_has_low))
+          it.printf(rx, 124, id(f_small), BLUE, display::TextAlign::TOP_RIGHT, "高%.0f° 低%.0f°", id(fc_high), id(fc_low));
+        else
+          it.printf(rx, 124, id(f_small), BLUE, display::TextAlign::TOP_RIGHT, "高%.0f°", id(fc_high));
+      }
+
+      int ly = 172;
+      int rowi = 0;
+      auto left_row = [&](const char *label, const char *val, Color vc) {
+        it.printf(lx, ly, id(f_label), BLUE, display::TextAlign::TOP_LEFT, "%s", label);
+        it.printf(rx, ly - 4, id(f_val), vc, display::TextAlign::TOP_RIGHT, "%s", val);
+        if (++rowi < 4) it.line(lx, ly + 42, rx, ly + 42, BLUE);
+        ly += 56;
+      };
+      static char vbuf[24];
+      float t = id(temp_sensor).state;
+      float h = id(hum_sensor).state;
+      float w = id(wifi_signal1).state;
+      float b = id(battery_level).state;
+      if (isnan(t)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.1f°C", t);
+      left_row("室内温度", vbuf, BLACK);
+      if (isnan(h)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.0f%%", h);
+      left_row("室内湿度", vbuf, BLACK);
+      if (isnan(w)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%d dBm", (int) w);
+      left_row("Wi-Fi", vbuf, BLACK);
+      if (isnan(b)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.0f%%", b);
+      left_row("电池", vbuf, (!isnan(b) && b < 20) ? RED : BLACK);   // 低电量标红
+
+      // 面板分隔线
+      it.filled_rectangle(316, 0, 2, 480, BLACK);
+
+      // ============ 右侧：校园卡消费日报卡片（仿 dk-card-report.html）============
+      const int cx = 336, cy = 12, cw = 448, chh = 456;
+      round_frame(cx, cy, cw, chh, 10, 2);   // 卡片圆角边框 2px
+      const int ix = cx + 24;                // 内容左边界 360
+      const int ir = cx + cw - 24;           // 内容右边界 760
+      const int num_r = ix + 360;            // 数字右对齐位置 720
+
+      // -- 头部蓝色横幅（白字标题居中，顶角与卡片同圆角）--
+      round_fill(cx + 2, cy + 2, cw - 4, 64, 8, BLUE);
+      it.filled_rectangle(cx + 2, cy + 34, cw - 4, 32, BLUE);
+      it.printf(cx + cw / 2, 36, id(f_title), WHITE, display::TextAlign::TOP_CENTER, "校园卡消费日报");
+
+      // -- 余额框（黄底，低于100元金额标红）--
+      float balance = isnan(id(card_balance).state) ? 0.0f : id(card_balance).state;
+      round_fill(ix, 88, ir - ix, 54, 8, YELLOW);
+      it.printf(ix + 18, 108, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "卡内余额");
+      it.printf(num_r, 98, id(f_big), balance < 100 ? RED : BLACK, display::TextAlign::TOP_RIGHT, "%.2f", balance);
+      it.printf(num_r + 8, 114, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "元");
+
+      // -- 今日消费（笔数从明细中按当天日期统计）--
+      float dsum = isnan(id(card_today_total).state) ? 0.0f : id(card_today_total).state;
+      it.printf(ix, 162, id(f_sect), BLACK, display::TextAlign::TOP_LEFT, "今日消费");
+      it.printf(ir, 166, id(f_small), BLUE, display::TextAlign::TOP_RIGHT, "共 %.2f 元 · %d 笔", dsum, (int) id(rec_today_count));
+
+      // -- 表头（加粗加大）--
+      it.printf(ix, 196, id(f_th), BLACK, display::TextAlign::TOP_LEFT, "时间");
+      it.printf(424, 196, id(f_th), BLACK, display::TextAlign::TOP_LEFT, "地点");
+      it.printf(640, 196, id(f_th), BLACK, display::TextAlign::TOP_RIGHT, "金额");
+      it.printf(ir, 196, id(f_th), BLACK, display::TextAlign::TOP_RIGHT, "余额");
+      it.line(ix, 216, ir, 216, BLACK);
+
+      // 地点超长截断
+      auto trunc = [](const std::string &s, size_t maxc) {
+        size_t n = 0, i = 0;
+        while (i < s.size()) {
+          if ((s[i] & 0xC0) != 0x80) { if (n >= maxc) break; n++; }
+          i++;
+        }
+        return s.substr(0, i);
+      };
+
+      // -- 消费明细（金额红色高亮，行间蓝色细分隔线）--
+      int ry = 222;
+      if (id(rec_count) == 0) {
+        it.printf(ix, 234, id(f_body), BLUE, display::TextAlign::TOP_LEFT, "暂无消费记录");
+        ry += 33;
+      }
+      for (int i = 0; i < id(rec_count) && i < 5; i++) {
+        it.printf(ix, ry, id(f_body), BLACK, display::TextAlign::TOP_LEFT, "%s", id(rec_time)[i].c_str());
+        it.printf(424, ry, id(f_body), BLACK, display::TextAlign::TOP_LEFT, "%s", trunc(id(rec_place)[i], 7).c_str());
+        it.printf(640, ry, id(f_body), RED, display::TextAlign::TOP_RIGHT, "%s", id(rec_amount)[i].c_str());
+        it.printf(ir, ry, id(f_body), BLACK, display::TextAlign::TOP_RIGHT, "%s", id(rec_balance)[i].c_str());
+        if (i < 4 && i < id(rec_count) - 1) it.line(ix, ry + 27, ir, ry + 27, BLUE);
+        ry += 33;
+      }
+
+      // -- 昨日消费框（绿底）--
+      float ysum = isnan(id(card_yesterday_total).state) ? 0.0f : id(card_yesterday_total).state;
+      int by = ry + 8;
+      round_fill(ix, by, ir - ix, 42, 7, GREEN);
+      it.printf(ix + 18, by + 14, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "昨日消费");
+      it.printf(num_r, by + 9, id(f_mon), BLACK, display::TextAlign::TOP_RIGHT, "%.2f", ysum);
+      it.printf(num_r + 8, by + 16, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "元");
+
