@@ -3,44 +3,51 @@ substitutions:
   imageheight: "720"  # Default fallback, can be overridden in main config
 
 image:
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/playing.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/playing.png
     id: fallback_playing_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/idle.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/idle.png
     id: va_waiting_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/listening.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/listening.png
     id: va_listening_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/thinking.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/thinking.png
     id: va_thinking_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/replying.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/xiaozhi-esphome/main/images/${imagemodel}/360x360/replying.png
     id: va_replying_image1
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
 ### other
-  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/error.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/error.png
     id: va_error_image
     resize: ${imageheight}x${imageheight}
     type: RGB565
     dither: NONE
 
-  - file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/timer_finished.png
+  - platform: file
+    file: https://raw.githubusercontent.com/RealDeco/sendspin-guition/main/images/timer_finished.png
     id: va_timer_finished_image
     resize: ${imageheight}x${imageheight}
     type: RGB565

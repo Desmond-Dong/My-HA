@@ -73,6 +73,7 @@ esp32:
       CONFIG_LWIP_TCP_WND_DEFAULT: "16384"
       CONFIG_SPI_FLASH_YIELD_DURING_ERASE: "y"
       CONFIG_CAMERA_SC202CS: "y"
+      CONFIG_CAMERA_SC202CS_AUTO_DETECT: "y"
       CONFIG_CAMERA_SC202CS_AUTO_DETECT_MIPI_INTERFACE_SENSOR: "y"
       CONFIG_CAMERA_SC202CS_MIPI_RAW8_1280X720_30FPS: "y"
       CONFIG_CAMERA_SC202CS_DEFAULT_IPA_JSON_CONFIGURATION_FILE: "y"
@@ -590,6 +591,36 @@ output:
     id: backlight_output
     frequency: 1000Hz
 
+  - platform: template
+    id: screen_light_red_output
+    type: float
+    write_action:
+      - lambda: |-
+          id(screen_r) = state;
+          lv_obj_set_style_bg_color(id(screen_light_overlay),
+            lv_color_make(id(screen_r) * 255.0f, id(screen_g) * 255.0f, id(screen_b) * 255.0f),
+            LV_STATE_DEFAULT);
+
+  - platform: template
+    id: screen_light_green_output
+    type: float
+    write_action:
+      - lambda: |-
+          id(screen_g) = state;
+          lv_obj_set_style_bg_color(id(screen_light_overlay),
+            lv_color_make(id(screen_r) * 255.0f, id(screen_g) * 255.0f, id(screen_b) * 255.0f),
+            LV_STATE_DEFAULT);
+
+  - platform: template
+    id: screen_light_blue_output
+    type: float
+    write_action:
+      - lambda: |-
+          id(screen_b) = state;
+          lv_obj_set_style_bg_color(id(screen_light_overlay),
+            lv_color_make(id(screen_r) * 255.0f, id(screen_g) * 255.0f, id(screen_b) * 255.0f),
+            LV_STATE_DEFAULT);
+
 light:
   - platform: monochromatic
     id: Sled
@@ -599,6 +630,27 @@ light:
     output: backlight_output
     restore_mode: ALWAYS_ON
     default_transition_length: 250ms
+
+  - platform: rgb
+    id: screen_light
+    name: "Screen Light"
+    red: screen_light_red_output
+    green: screen_light_green_output
+    blue: screen_light_blue_output
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+    on_turn_on:
+      - lvgl.widget.show: screen_light_overlay
+      - lvgl.widget.update:
+          id: screen_light_btn
+          state:
+            checked: true
+    on_turn_off:
+      - lvgl.widget.hide: screen_light_overlay
+      - lvgl.widget.update:
+          id: screen_light_btn
+          state:
+            checked: false
 i2s_audio:
   - id: mic_bus
     i2s_lrclk_pin: GPIO29

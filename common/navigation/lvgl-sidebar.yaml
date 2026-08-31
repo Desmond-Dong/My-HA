@@ -4,6 +4,14 @@ lvgl:
   top_layer:
     widgets:
     - obj:
+        id: screen_light_overlay
+        width: 1280
+        height: 720
+        bg_opa: COVER
+        bg_color: 0x000000
+        hidden: true
+        clickable: false
+    - obj:
         align: TOP_LEFT
         styles: sidebar
         id: sidebars
@@ -161,6 +169,32 @@ lvgl:
                     styles: nav_label_inactivate
                     id: settings_btn_label
                     text: "设置"
+
+          # Screen Light toggle button
+          - obj:
+              styles: nav_btn_container
+              widgets:
+                - button:
+                    align: CENTER
+                    styles: nav_btn_inactivate
+                    id: screen_light_btn
+                    checkable: true
+                    state:
+                      checked: false
+                    checked:
+                      bg_color: 0xCCE8E7
+                    widgets:
+                      - label:
+                          align: CENTER
+                          id: screen_light_btn_icon
+                          styles: nav_icon_inactivate
+                          text: "\U000F0336" # mdi:lightbulb-outlined
+                    on_press:
+                      - light.toggle: screen_light
+                - label:
+                    styles: nav_label_inactivate
+                    id: screen_light_btn_label
+                    text: "灯"
           
     - obj:
         align: CENTER

@@ -50,10 +50,8 @@ async def to_code(config):
     cg.add(var.set_jpeg_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_framerate(config[CONF_FRAMERATE]))
 
-    # Pull the official M5Stack Tab5 BSP via Component Manager.
-    # Camera-related sdkconfig is set from the main YAML so HA build picks it up
-    # deterministically; keep the component Python side minimal.
     add_idf_component(name="espressif/m5stack_tab5", ref="^1.2.0")
+    add_idf_component(name="espressif/esp_ipa", ref="^1.3.0")
 
     # Hardware JPEG encoder (ESP32-P4 has a dedicated codec)
     add_idf_sdkconfig_option("CONFIG_JPEG_CONTROLLER_ENABLED", True)

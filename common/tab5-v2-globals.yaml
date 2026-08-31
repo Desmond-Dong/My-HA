@@ -152,3 +152,16 @@ globals:
     type: bool
     restore_value: yes
     initial_value: "false"
+
+  - id: screen_r
+    type: float
+    restore_value: no
+    initial_value: '1.0'
+  - id: screen_g
+    type: float
+    restore_value: no
+    initial_value: '1.0'
+  - id: screen_b
+    type: float
+    restore_value: no
+    initial_value: '1.0'

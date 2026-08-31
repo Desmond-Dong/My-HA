@@ -13,11 +13,20 @@
 #include <esp_heap_caps.h>
 #include <bsp/m5stack_tab5.h>
 #include <driver/jpeg_encode.h>
+#include <driver/ledc.h>
 
 // IDF private header for getting existing I2C bus handle (IDF v5.4+)
 #include <esp_private/i2c_platform.h>
 // MIPI-CSI+V4L2 video init (pulled by BSP espr::m5stack_tab5)
 #include <esp_video_init.h>
+
+// Fallback for V4L2 controls if not in headers
+#ifndef V4L2_CID_HFLIP
+#define V4L2_CID_HFLIP             (0x00980914)
+#endif
+#ifndef V4L2_CID_VFLIP
+#define V4L2_CID_VFLIP             (0x00980915)
+#endif
 
 namespace esphome::m5_tab5_camera {
 
@@ -180,6 +189,34 @@ bool M5Tab5Camera::init_camera_sensor_() {
   // Wait for sensor to fully power up and stabilise.
   vTaskDelay(pdMS_TO_TICKS(300));
 
+  // Provide 24 MHz master clock to SC202CS via LEDC on GPIO36.
+  // Without this clock the sensor PLL may produce wrong pixel timing,
+  // affecting ISP colour processing.
+  {
+    const ledc_timer_config_t timer_conf = {
+      .speed_mode      = LEDC_LOW_SPEED_MODE,
+      .duty_resolution = LEDC_TIMER_1_BIT,
+      .timer_num       = LEDC_TIMER_0,
+      .freq_hz         = 24000000,
+      .clk_cfg         = LEDC_AUTO_CLK,
+      .deconfigure     = false,
+    };
+    ledc_timer_config(&timer_conf);
+    const ledc_channel_config_t ch_conf = {
+      .gpio_num   = 36,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel    = LEDC_CHANNEL_0,
+      .intr_type  = LEDC_INTR_DISABLE,
+      .timer_sel  = LEDC_TIMER_0,
+      .duty       = 1,
+      .hpoint     = 0,
+      .sleep_mode = LEDC_SLEEP_MODE_KEEP_ALIVE,
+    };
+    ledc_channel_config(&ch_conf);
+    ESP_LOGI(TAG, "Camera 24 MHz clock started on GPIO36 via LEDC");
+  }
+  vTaskDelay(pdMS_TO_TICKS(50));  // Let PLL stabilise before SCCB access
+
   // 3. Get ESPHome's I2C bus handle (ESPHome assigns HP ports from I2C_NUM_0)
   i2c_master_bus_handle_t i2c_handle = NULL;
   esp_err_t ret = i2c_master_get_bus_handle(0, &i2c_handle);
@@ -212,6 +249,13 @@ bool M5Tab5Camera::init_camera_sensor_() {
     return false;
   }
   ESP_LOGI(TAG, "esp_video_init succeeded (MIPI-CSI + V4L2 bridge)");
+  // Suppress ISP verbose debug logs that flood the console at ~3ms intervals.
+  esp_log_level_set("esp_ipa_ian", ESP_LOG_WARN);
+  esp_log_level_set("esp_ipa_awb", ESP_LOG_WARN);
+  esp_log_level_set("esp_ipa_agc", ESP_LOG_WARN);
+  esp_log_level_set("esp_ipa_adn", ESP_LOG_WARN);
+  esp_log_level_set("esp_ipa_acc", ESP_LOG_WARN);
+  esp_log_level_set("isp_task", ESP_LOG_WARN);
 
   // 5. V4L2 capture setup
   // BSP_CAMERA_DEVICE = ESP_VIDEO_MIPI_CSI_DEVICE_NAME = "/dev/video0"
@@ -238,17 +282,23 @@ bool M5Tab5Camera::init_camera_sensor_() {
   v4l2_format fmt;
   memset(&fmt, 0, sizeof(fmt));
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  fmt.fmt.pix.width = 1280;
-  fmt.fmt.pix.height = 720;
+  fmt.fmt.pix.width = frame_width_;
+  fmt.fmt.pix.height = frame_height_;
   fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB565;
   fmt.fmt.pix.field = V4L2_FIELD_NONE;
   if (ioctl(camera_fd_, VIDIOC_S_FMT, &fmt) < 0) {
-    ESP_LOGW(TAG, "VIDIOC_S_FMT RGB565 failed, falling back to G_FMT: %s", strerror(errno));
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(camera_fd_, VIDIOC_G_FMT, &fmt) < 0) {
-      ESP_LOGE(TAG, "VIDIOC_G_FMT also failed: %s", strerror(errno));
-      return false;
+    ESP_LOGW(TAG, "VIDIOC_S_FMT RGB565 %dx%d failed: %s", frame_width_, frame_height_, strerror(errno));
+    // Try native sensor resolution (1280x720) as fallback.
+    fmt.fmt.pix.width = 1280;
+    fmt.fmt.pix.height = 720;
+    if (ioctl(camera_fd_, VIDIOC_S_FMT, &fmt) < 0) {
+      ESP_LOGW(TAG, "VIDIOC_S_FMT 1280x720 also failed, falling back to G_FMT: %s", strerror(errno));
+      memset(&fmt, 0, sizeof(fmt));
+      fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+      if (ioctl(camera_fd_, VIDIOC_G_FMT, &fmt) < 0) {
+        ESP_LOGE(TAG, "VIDIOC_G_FMT also failed: %s", strerror(errno));
+        return false;
+      }
     }
   }
   frame_width_  = (int)fmt.fmt.pix.width;
@@ -256,7 +306,25 @@ bool M5Tab5Camera::init_camera_sensor_() {
   {
     uint32_t pf = fmt.fmt.pix.pixelformat;
     char fourcc[5] = {(char)(pf&0xFF),(char)((pf>>8)&0xFF),(char)((pf>>16)&0xFF),(char)((pf>>24)&0xFF),0};
-    ESP_LOGI(TAG, "Driver default format: %dx%d %s stride=%d", frame_width_, frame_height_, fourcc, fmt.fmt.pix.bytesperline);
+    ESP_LOGI(TAG, "Driver format: %dx%d %s stride=%d", frame_width_, frame_height_, fourcc, fmt.fmt.pix.bytesperline);
+  }
+
+  // Try hardware-level flip to avoid software rotation (non-fatal if unsupported).
+  {
+    struct v4l2_control ctrl;
+    ctrl.id = V4L2_CID_HFLIP;
+    ctrl.value = 1;
+    if (ioctl(camera_fd_, VIDIOC_S_CTRL, &ctrl) == 0) {
+      ctrl.id = V4L2_CID_VFLIP;
+      ctrl.value = 1;
+      if (ioctl(camera_fd_, VIDIOC_S_CTRL, &ctrl) == 0) {
+        ESP_LOGI(TAG, "Sensor flip enabled via V4L2 - skipping software rotation");
+        sensor_hw_flip_ = true;
+      }
+    }
+    if (!sensor_hw_flip_) {
+      ESP_LOGI(TAG, "V4L2 flip not supported, will rotate in software");
+    }
   }
 
   // Request buffers
@@ -313,9 +381,8 @@ bool M5Tab5Camera::init_camera_sensor_() {
       ESP_LOGE(TAG, "jpeg_new_encoder_engine failed: %s", esp_err_to_name(ret));
       return false;
     }
-    // High-quality YUV444 JPEG can approach raw RGB565 size on detailed scenes.
-    // Use a PSRAM-backed output buffer sized close to the raw frame to avoid
-    // truncation warnings from the hardware encoder.
+    // Allocate a PSRAM-backed output buffer close to raw frame size to avoid
+    // truncation warnings from the hardware encoder (YUV422 is ~2/3 of raw).
     jpeg_out_buf_size_ = std::max<uint32_t>(262144, (uint32_t)(frame_width_ * frame_height_ * 2));
     size_t allocated_size = 0;
     jpeg_encode_memory_alloc_cfg_t mem_cfg = {
@@ -327,11 +394,13 @@ bool M5Tab5Camera::init_camera_sensor_() {
       ESP_LOGE(TAG, "malloc JPEG outbuf (%u bytes) failed", jpeg_out_buf_size_);
       return false;
     }
-    rgb565_convert_buf_ = (uint8_t *)heap_caps_malloc((size_t)frame_width_ * (size_t)frame_height_ * 2U,
-                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (rgb565_convert_buf_ == nullptr) {
-      ESP_LOGE(TAG, "malloc RGB565 convert buf failed");
-      return false;
+    if (!sensor_hw_flip_) {
+      rgb565_convert_buf_ = (uint8_t *)heap_caps_malloc((size_t)frame_width_ * (size_t)frame_height_ * 2U,
+                                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (rgb565_convert_buf_ == nullptr) {
+        ESP_LOGE(TAG, "malloc RGB565 convert buf failed");
+        return false;
+      }
     }
     ESP_LOGI(TAG, "JPEG encoder ready, outbuf=%u bytes", jpeg_out_buf_size_);
   }
@@ -380,24 +449,32 @@ uint8_t *M5Tab5Camera::capture_jpeg_frame_(size_t *out_len) {
   }
 
   // Rotate 180° to match UI orientation.
-  uint16_t *src16 = (uint16_t *)raw;
-  uint16_t *dst16 = (uint16_t *)rgb565_convert_buf_;
-  for (int y = 0; y < frame_height_; y++) {
-    for (int x = 0; x < frame_width_; x++) {
-      uint32_t src_idx = (uint32_t)y * (uint32_t)frame_width_ + (uint32_t)x;
-      uint32_t dst_idx = (uint32_t)(frame_height_ - 1 - y) * (uint32_t)frame_width_ + (uint32_t)(frame_width_ - 1 - x);
-      dst16[dst_idx] = src16[src_idx];
+  uint8_t *enc_src;
+  uint32_t enc_src_len;
+  if (sensor_hw_flip_) {
+    enc_src    = raw;
+    enc_src_len = raw_len;
+  } else {
+    // Row-wise reverse copy — ~10x faster than pixel-by-pixel loop.
+    uint16_t *src16 = (uint16_t *)raw;
+    uint16_t *dst16 = (uint16_t *)rgb565_convert_buf_;
+    for (int y = 0; y < frame_height_; y++) {
+      uint16_t *row_src = src16 + y * frame_width_;
+      uint16_t *row_dst = dst16 + (frame_height_ - 1 - y) * frame_width_;
+      std::reverse_copy(row_src, row_src + frame_width_, row_dst);
     }
+    enc_src    = rgb565_convert_buf_;
+    enc_src_len = (uint32_t)frame_width_ * (uint32_t)frame_height_ * 2U;
   }
 
   jpeg_encode_cfg_t enc_cfg = {};
   enc_cfg.height        = (uint32_t)frame_height_;
   enc_cfg.width         = (uint32_t)frame_width_;
   enc_cfg.src_type      = JPEG_ENCODE_IN_FORMAT_RGB565;
-  enc_cfg.sub_sample    = JPEG_DOWN_SAMPLING_YUV444;
+  enc_cfg.sub_sample    = JPEG_DOWN_SAMPLING_YUV422;
   enc_cfg.image_quality = esphome_quality_to_hw_quality(jpeg_quality_);
 
-  esp_err_t ret = jpeg_encoder_process(jpeg_enc_, &enc_cfg, rgb565_convert_buf_, raw_len,
+  esp_err_t ret = jpeg_encoder_process(jpeg_enc_, &enc_cfg, enc_src, enc_src_len,
                                        jpeg_out_buf_, jpeg_out_buf_size_, &jpeg_len);
 
   // Re-queue immediately

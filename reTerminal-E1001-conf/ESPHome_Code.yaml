@@ -4,7 +4,7 @@ esphome:
   on_boot:
     priority: 800
     then:
-      - output.turn_on: mic_enable
+      - switch.turn_on: mic_enable
       - delay: 30s
       - component.update: dashboard_image
  #     - output.turn_on: bsp_sd_enable
@@ -12,16 +12,24 @@ esphome:
       - delay: 200ms
       - component.update: battery_voltage
       - component.update: battery_level
+      # 开关为关机状态时停掉开机自动开始的 BLE 扫描
+      - if:
+          condition:
+            lambda: 'return !id(ble_switch).state;'
+          then:
+            - lambda: 'id(ble_tracker)->stop_scan();'
 
-#  project:
-#    name: francescopace.espectre
-#    version: "2.3.0"
 esp32:
   board: seeed_xiao_esp32s3
+  flash_size: 32MB
   framework:
-    type: arduino
+    type: esp-idf
+    advanced:
+      # ESP-IDF 对 32MB flash 的支持被标记为实验性，OTA 必须开启此项
+      enable_idf_experimental_features: true
 # Enable logging
 logger:
+  hardware_uart: UART0
 #  level: VERY_VERBOSE
 #  logs:
 #    microphone: VERY_VERBOSE
@@ -30,6 +38,8 @@ logger:
 api:
   encryption:
     key: "lY+oz71tYyiQ8XgimOxMd6pYEyWhLzzXqhNYsZatTmw="
+  on_client_connected:
+    - micro_wake_word.start:
   services: # for playing music via Home Assistant
     - service: play_song
       variables:
@@ -65,36 +75,6 @@ api:
             }
 
             bz->set_level(0);
-    - service: start_sleep_monitoring
-      then:
-        - switch.turn_on: sleep_monitoring
-        - lambda: |-
-            id(sleep_noise_event_count) = 0;
-            id(sleep_noise_total_ms) = 0;
-            id(sleep_noise_started_ms) = millis();
-            id(sleep_noise_active) = false;
-            id(sleep_noise_floor_initialized) = false;
-            id(sleep_noise_floor_db) = 0.0f;
-        - logger.log: "Sleep monitoring started"
-    - service: stop_sleep_monitoring
-      then:
-        - switch.turn_off: sleep_monitoring
-        - lambda: |-
-            if (id(sleep_noise_active)) {
-              id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
-              id(sleep_noise_active) = false;
-            }
-        - logger.log: "Sleep monitoring stopped"
-    - service: reset_sleep_monitoring
-      then:
-        - lambda: |-
-            id(sleep_noise_event_count) = 0;
-            id(sleep_noise_total_ms) = 0;
-            id(sleep_noise_started_ms) = millis();
-            id(sleep_noise_active) = false;
-            id(sleep_noise_floor_initialized) = false;
-            id(sleep_noise_floor_db) = 0.0f;
-        - logger.log: "Sleep monitoring reset"
 ota:
   - platform: esphome
     password: "6abb3deae74569ff3725fde6bac204e8"
@@ -115,32 +95,9 @@ psram:
 
 captive_portal:
 
-external_components:
-  - source:
-      type: local
-      path: components
-    components: [ reterminal_pdm_audio ]
-
-#external_components:
-#  - source:
-#      type: git
-#      url: https://github.com/francescopace/espectre
-#      ref: main
-#    components: [ espectre ]
-#    refresh: always
-#  - source:
-#      type: local
-#      path: "components"
-#espectre:
-#  id: espectre_csi
-
-
-#dashboard_import:
-#  package_import_url: github://francescopace/espectre/examples/espectre-s3.yaml@main
-#  import_full_config: true
-
 # BLE Proxy
 esp32_ble_tracker:
+  id: ble_tracker
   scan_parameters:
     active: true
 bluetooth_proxy:
@@ -155,14 +112,47 @@ bluetooth_proxy:
 #  wakeup_pin_mode: INVERT_WAKEUP
 
 i2s_audio:
-  - id: i2s_mic_bus
-    i2s_lrclk_pin: GPIO42    # PDM_CLK (E1001 onboard PDM mic)
+  i2s_lrclk_pin: GPIO42
 
-reterminal_pdm_audio:
-  id: pdm_audio
+microphone:
+  - platform: i2s_audio
+    id: pdm_microphone
+    adc_type: external
+    pdm: true
+    i2s_din_pin: GPIO41
+
+voice_assistant:
+  microphone: pdm_microphone
+  use_wake_word: false
+  on_listening:
+    - logger.log: "Listening..."
+  on_stt_end:
+    - logger.log: "Speech-to-text ended"
+  on_tts_start:
+    - logger.log: "TTS started"
+  on_end:
+    - logger.log: "Voice assistant ended"
+    - micro_wake_word.start:
+  on_error:
+    - logger.log:
+        format: "Voice assistant error: %s"
+        args: [ 'code.c_str()' ]
+
+micro_wake_word:
+  microphone: pdm_microphone
+  models:
+    - model: okay_nabu
+  on_wake_word_detected:
+    - light.turn_on:
+        id: buzzer
+        brightness: 60%
+    - delay: 100ms
+    - light.turn_off: buzzer
+    - logger.log: "Wake word detected"
+    - voice_assistant.start:
 
 debug:
-  update_interval: 5s
+  update_interval: 30s
 
     
 # SPI / I²C
@@ -195,34 +185,23 @@ switch:
           
       - delay: 500ms
       - switch.turn_off: refresh_display
+  - platform: gpio
+    pin: GPIO38
+    id: mic_enable
+    restore_mode: ALWAYS_ON
+    internal: true
+
+  # BLE 代理开关（HA 中可控制）：关闭后停止持续 BLE 扫描以省电
   - platform: template
-    name: "Sleep Monitoring"
-    id: sleep_monitoring
-    optimistic: true
+    name: "BLE Proxy"
+    id: ble_switch
+    icon: "mdi:bluetooth"
     restore_mode: RESTORE_DEFAULT_ON
-    entity_category: config
+    optimistic: true
     turn_on_action:
-      - lambda: |-
-          id(sleep_noise_event_count) = 0;
-          id(sleep_noise_total_ms) = 0;
-          id(sleep_noise_started_ms) = millis();
-          id(sleep_noise_active) = false;
-          id(sleep_noise_floor_initialized) = false;
-          id(sleep_noise_floor_db) = 0.0f;
-      - logger.log: "Sleep monitoring armed"
+      - lambda: 'id(ble_tracker)->start_scan();'
     turn_off_action:
-      - lambda: |-
-          if (id(sleep_noise_active)) {
-            id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
-            id(sleep_noise_active) = false;
-          }
-      - logger.log: "Sleep monitoring disarmed"
-  - platform: template
-    name: "Sleep Adaptive Threshold"
-    id: sleep_adaptive_threshold
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    entity_category: config
+      - lambda: 'id(ble_tracker)->stop_scan();'
 #  - platform: template
 #    name: "Force Deep Sleep"
 #    turn_on_action:
@@ -245,11 +224,26 @@ sensor:
   - platform: wifi_signal
     name: "Wi-Fi Signal"
     id: wifi_signal1
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: internal_temperature
+    name: "Chip Temperature"
+    id: chip_temp
+    entity_category: diagnostic
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
     update_interval: 60s
   - platform: adc
     pin: GPIO1
     name: "Battery Voltage"
     id: battery_voltage
+    entity_category: diagnostic
     update_interval: 60s
     attenuation: 12db
     filters:
@@ -282,73 +276,33 @@ sensor:
           max_value: 100
   - platform: debug
     free:
-      name: "Free Heap"
+      name: "Heap Free"
+      entity_category: diagnostic
     block:
-      name: "Max Free Block"
+      name: "Heap Max Block"
+      entity_category: diagnostic
+    min_free:
+      name: "Heap Min Free"
+      entity_category: diagnostic
     loop_time:
       name: "Loop Time"
+      entity_category: diagnostic
+    psram:
+      name: "Free PSRAM"
+      entity_category: diagnostic
+    fragmentation:
+      name: "Heap Fragmentation"
+      entity_category: diagnostic
+    cpu_frequency:
+      name: "CPU Frequency"
+      entity_category: diagnostic
   - platform: template
-    name: "Sleep Noise Events"
-    id: sleep_noise_events
-    unit_of_measurement: "events"
-    accuracy_decimals: 0
-    lambda: |-
-      return id(sleep_noise_event_count);
-    update_interval: 10s
-  - platform: template
-    name: "Sleep Noise Minutes"
-    id: sleep_noise_minutes
-    unit_of_measurement: "min"
-    accuracy_decimals: 1
-    lambda: |-
-      uint32_t total_ms = id(sleep_noise_total_ms);
-      if (id(sleep_noise_active)) {
-        total_ms += millis() - id(sleep_noise_started_ms);
-      }
-      return total_ms / 60000.0f;
-    update_interval: 10s
-  - platform: template
-    name: "Sleep Score"
-    id: sleep_score
-    unit_of_measurement: "%"
-    accuracy_decimals: 0
-    icon: "mdi:sleep"
-    lambda: |-
-      uint32_t total_ms = id(sleep_noise_total_ms);
-      if (id(sleep_noise_active)) {
-        total_ms += millis() - id(sleep_noise_started_ms);
-      }
-      const float noise_minutes = total_ms / 60000.0f;
-      float score = 100.0f - (id(sleep_noise_event_count) * 2.0f) - (noise_minutes * 1.5f);
-      if (score < 0.0f) return 0.0f;
-      if (score > 100.0f) return 100.0f;
-      return score;
-    update_interval: 30s
-  - platform: template
-    name: "Sleep Noise Floor"
-    id: sleep_noise_floor
-    unit_of_measurement: "dB"
-    accuracy_decimals: 1
-    icon: "mdi:ear-hearing"
-    lambda: |-
-      return id(sleep_noise_floor_db);
-    update_interval: 10s
-  - platform: template
-    name: "Sleep Effective Threshold"
-    id: sleep_effective_threshold
-    unit_of_measurement: "dB"
-    accuracy_decimals: 1
-    icon: "mdi:tune"
-    lambda: |-
-      float threshold = id(sleep_noise_threshold).state;
-      if (id(sleep_adaptive_threshold).state && id(sleep_noise_floor_initialized)) {
-        const float adaptive_threshold = id(sleep_noise_floor_db) + id(sleep_adaptive_margin).state;
-        if (adaptive_threshold > threshold) {
-          threshold = adaptive_threshold;
-        }
-      }
-      return threshold;
-    update_interval: 10s
+    name: "Display Refresh Count"
+    id: disp_count_sensor
+    entity_category: diagnostic
+    icon: "mdi:refresh"
+    update_interval: 60s
+    lambda: 'return (float) id(disp_count);'
 text:
   - platform: template
     name: "Custom Image URL"
@@ -360,11 +314,42 @@ text:
     restore_value: true
     max_length: 255
 text_sensor:
+  # ---- 诊断信息 ----
   - platform: debug
     device:
       name: "Device Info"
+      entity_category: diagnostic
     reset_reason:
       name: "Reset Reason"
+      entity_category: diagnostic
+  - platform: uptime
+    name: "Uptime Human"
+    entity_category: diagnostic
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      entity_category: diagnostic
+    ssid:
+      name: "Connected SSID"
+      entity_category: diagnostic
+    bssid:
+      name: "Connected BSSID"
+      entity_category: diagnostic
+    dns_address:
+      name: "DNS Address"
+      entity_category: diagnostic
+    mac_address:
+      name: "MAC Address"
+      entity_category: diagnostic
+  - platform: version
+    name: "ESPHome Version"
+    entity_category: diagnostic
+
+button:
+  - platform: restart
+    name: "Restart"
+    entity_category: diagnostic
+
 output:
 #  - platform: gpio
 #    pin: GPIO6
@@ -382,83 +367,22 @@ output:
     # The frequency determines the pitch of the buzzer's sound. 1000Hz is a mid-range tone.
     frequency: 1000Hz
 
-  - platform: gpio
-    pin: GPIO38
-    id: mic_enable
-
-number:
-  - platform: template
-    name: "Sleep Noise Threshold"
-    id: sleep_noise_threshold
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    min_value: 20
-    max_value: 90
-    step: 1
-    initial_value: 48
-  - platform: template
-    name: "Sleep Adaptive Margin"
-    id: sleep_adaptive_margin
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    min_value: 3
-    max_value: 30
-    step: 1
-    initial_value: 8
-  - platform: template
-    name: "Sleep Baseline Follow"
-    id: sleep_baseline_follow
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    min_value: 0.01
-    max_value: 0.30
-    step: 0.01
-    initial_value: 0.08
-
 binary_sensor:
-  - platform: template
-    name: "Sleep Noise Event"
-    id: sleep_noise_event
-    device_class: sound
-    lambda: |-
-      if (!id(sleep_monitoring).state) {
-        return false;
-      }
-      if (!id(sleep_rms_loudness).has_state()) {
-        return false;
-      }
-      float threshold = id(sleep_noise_threshold).state;
-      if (id(sleep_adaptive_threshold).state && id(sleep_noise_floor_initialized)) {
-        const float adaptive_threshold = id(sleep_noise_floor_db) + id(sleep_adaptive_margin).state;
-        if (adaptive_threshold > threshold) {
-          threshold = adaptive_threshold;
-        }
-      }
-      return id(sleep_rms_loudness).state >= threshold;
-    filters:
-      - delayed_on: 800ms
-      - delayed_off: 1500ms
-    on_press:
-      - lambda: |-
-          id(sleep_noise_active) = true;
-          id(sleep_noise_started_ms) = millis();
-          id(sleep_noise_event_count) += 1;
-    on_release:
-      - lambda: |-
-          if (id(sleep_noise_active)) {
-            id(sleep_noise_total_ms) += millis() - id(sleep_noise_started_ms);
-            id(sleep_noise_active) = false;
-          }
-  - platform: gpio    # Next page
+  - platform: status
+    name: "API Connected"
+    entity_category: diagnostic
+  - platform: gpio    # Next page / Voice assistant
     pin:
       number: GPIO3
       mode: INPUT_PULLUP
       inverted: true
     id: key1
     name: "Key1"
+    on_press:
+      - micro_wake_word.stop:
+      - voice_assistant.start:
+    on_release:
+      - voice_assistant.stop:
   - platform: gpio     # Prev page
     pin:
       number: GPIO4
@@ -469,13 +393,6 @@ binary_sensor:
     filters:
       - delayed_on: 30ms
       - delayed_off: 30ms
-    on_press:
-      - lambda: |-
-          id(sleep_noise_event_count) = 0;
-          id(sleep_noise_total_ms) = 0;
-          id(sleep_noise_started_ms) = millis();
-          id(sleep_noise_active) = false;
-      - logger.log: "Sleep stats reset"
 
   - platform: gpio     # Key3 物理刷新按键
     pin:
@@ -506,54 +423,10 @@ time:
     id: ha_time
 
 globals:
-  - id: sleep_noise_event_count
-    type: int
-    restore_value: no
-    initial_value: '0'
-  - id: sleep_noise_total_ms
+  - id: disp_count
     type: uint32_t
     restore_value: no
     initial_value: '0'
-  - id: sleep_noise_started_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-  - id: sleep_noise_active
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-  - id: sleep_noise_floor_db
-    type: float
-    restore_value: no
-    initial_value: '0.0'
-  - id: sleep_noise_floor_initialized
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-
-interval:
-  - interval: 10s
-    then:
-      - lambda: |-
-          if (!id(sleep_monitoring).state) {
-            return;
-          }
-          if (!id(sleep_rms_loudness).has_state()) {
-            return;
-          }
-          if (id(sleep_noise_active)) {
-            return;
-          }
-
-          const float rms = id(sleep_rms_loudness).state;
-          if (!id(sleep_noise_floor_initialized)) {
-            id(sleep_noise_floor_db) = rms;
-            id(sleep_noise_floor_initialized) = true;
-            return;
-          }
-
-          const float alpha = id(sleep_baseline_follow).state;
-          id(sleep_noise_floor_db) = id(sleep_noise_floor_db) + ((rms - id(sleep_noise_floor_db)) * alpha);
 
 ##number:
  # - platform: template
@@ -622,4 +495,5 @@ display:
       inverted: true
     update_interval: never   # 不自动刷新，靠 on_time 来触发
     lambda: |-
+      id(disp_count)++;                     // 刷新次数统计（诊断）
       it.image(0, 0, id(dashboard_image));

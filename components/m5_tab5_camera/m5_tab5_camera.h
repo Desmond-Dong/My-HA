@@ -112,6 +112,7 @@ class M5Tab5Camera : public camera::Camera {
   uint32_t num_buffers_{0};
   int frame_width_{800};
   int frame_height_{600};
+  bool sensor_hw_flip_{false};
 
   /* JPEG encoder */
   jpeg_encoder_handle_t jpeg_enc_{nullptr};
