@@ -10,7 +10,12 @@ esphome:
   on_boot:
     priority: 600
     then:
-      - delay: 25s                       # 等 HA 数据到位后首次绘制
+      - output.turn_on: bsp_sd_enable
+      - output.turn_on: mic_power_enable
+      - pcf8563.read_time:               # 无网络时用 RTC 恢复系统时间
+      - delay: 25s                       # 等 HA 连接与数据到位
+      - script.execute: fetch_forecast   # 拉取今日高/低温
+      - delay: 3s
       - component.update: epaper_display
       - output.turn_on: bsp_battery_enable
       - delay: 200ms
@@ -46,8 +51,10 @@ logger:
 api:
   encryption:
     key: !secret e1002__encryption_key
-  services:
-    - service: play_song
+  on_client_connected:
+    - script.execute: fetch_forecast
+  actions:
+    - action: play_song
       variables:
         song_data: string
       then:
@@ -140,9 +147,6 @@ globals:
   - id: rec_balance
     type: 'std::string[6]'
     restore_value: no
-  - id: fc_raw
-    type: std::string
-    restore_value: no
   - id: fc_high
     type: float
     restore_value: no
@@ -159,10 +163,25 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: fc_status
+    type: std::string
+    restore_value: no
   - id: disp_count
     type: uint32_t
     restore_value: no
     initial_value: '0'
+  - id: screen_blank
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: page_index
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: page_auto
+    type: bool
+    restore_value: no
+    initial_value: 'true'
 
 script:
 
@@ -193,13 +212,12 @@ script:
             if (p2 != std::string::npos) {
               size_t v = p2 + pat2.size();
               size_t e = rec.find_first_of(",}", v);
-              if (e != std::string::npos) {
-                std::string val = rec.substr(v, e - v);
-                size_t b = val.find_first_not_of(' ');
-                if (b == std::string::npos) return "";
-                size_t t = val.find_last_not_of(' ');
-                return val.substr(b, t - b + 1);
-              }
+              if (e == std::string::npos) e = rec.size();
+              std::string val = rec.substr(v, e - v);
+              size_t b = val.find_first_not_of(' ');
+              if (b == std::string::npos) return "";
+              size_t t = val.find_last_not_of(' ');
+              return val.substr(b, t - b + 1);
             }
             return "";
           };
@@ -227,48 +245,36 @@ script:
             pos = end + 1;
           }
 
-  # 解析天气预报 forecast 属性的第一条（今天）
-  - id: parse_forecast
+  # 调用 HA weather.get_forecasts 服务获取今日高/低温（和风天气用 websocket 预报，无属性可订阅）
+  - id: fetch_forecast
     mode: queued
     then:
-      - lambda: |-
-          const std::string &raw = id(fc_raw);
-          size_t p = raw.find("{'");
-          if (p == std::string::npos) return;
-          size_t e = raw.find('}', p);
-          if (e == std::string::npos) return;
-          std::string rec = raw.substr(p + 1, e - p - 1);
-          auto get_field = [](const std::string &r, const std::string &key) -> std::string {
-            std::string pat = "'" + key + "': '";
-            size_t q = r.find(pat);
-            if (q != std::string::npos) {
-              size_t v = q + pat.size();
-              size_t z = r.find('\'', v);
-              if (z != std::string::npos) return r.substr(v, z - v);
-            }
-            std::string pat2 = "'" + key + "': ";
-            size_t q2 = r.find(pat2);
-            if (q2 != std::string::npos) {
-              size_t v = q2 + pat2.size();
-              size_t z = r.find_first_of(",}", v);
-              if (z != std::string::npos) {
-                std::string val = r.substr(v, z - v);
-                size_t b = val.find_first_not_of(' ');
-                if (b == std::string::npos) return "";
-                size_t t = val.find_last_not_of(' ');
-                return val.substr(b, t - b + 1);
-              }
-            }
-            return "";
-          };
-          std::string hi = get_field(rec, "temperature");
-          std::string lo = get_field(rec, "templow");
-          id(fc_high) = atof(hi.c_str());
-          id(fc_low) = atof(lo.c_str());
-          id(fc_has_low) = !lo.empty();
-          id(fc_valid) = (!hi.empty() || !lo.empty());
-
-
+      - homeassistant.action:
+          action: weather.get_forecasts
+          data:
+            entity_id: ${weather_entity}
+            type: daily
+          capture_response: true
+          on_success:
+            - lambda: |-
+                #include "esphome/components/json/json_util.h"
+                JsonObjectConst first = response["response"]["${weather_entity}"]["forecast"][0];
+                // 字段名兜底：不同 HA 版本可能带/不带 native_ 前缀
+                float hi = first["temperature"] | first["native_temperature"] | NAN;
+                float lo = first["templow"] | first["native_templow"] | NAN;
+                id(fc_high) = hi;
+                id(fc_low) = lo;
+                id(fc_has_low) = !isnan(lo);
+                id(fc_valid) = !isnan(hi);
+                char st[32];
+                snprintf(st, sizeof(st), "OK %.0f/%.0f", hi, lo);
+                id(fc_status) = st;
+                if (isnan(hi)) ESP_LOGW("fc", "forecast keys missing");
+          on_error:
+            - lambda: |-
+                id(fc_status) = "ERROR";
+                id(fc_valid) = false;
+                ESP_LOGW("fc", "weather.get_forecasts failed");
 light:
   - platform: monochromatic
     icon: "mdi:volume-high"
@@ -276,6 +282,10 @@ light:
     name: "Buzzer"
     id: buzzer
     default_transition_length: 0s
+  - platform: binary
+    name: "Onboard LED"
+    output: led_output
+    id: onboard_led
 
 switch:
   - platform: template
@@ -372,6 +382,20 @@ sensor:
     state_class: measurement
     lambda: 'return id(battery_voltage).state;'
     update_interval: 60s
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return !isnan(x) && x < 5.0f && !id(screen_blank);'
+            then:
+              - lambda: 'id(screen_blank) = true;'
+              - component.update: epaper_display
+        - if:
+            condition:
+              lambda: 'return !isnan(x) && x >= 5.0f && id(screen_blank);'
+            then:
+              - lambda: 'id(screen_blank) = false;'
+              - component.update: epaper_display
     filters:
       - calibrate_linear:
           - 4.15 -> 100.0
@@ -448,6 +472,11 @@ text_sensor:
   - platform: version
     name: "ESPHome Version"
     entity_category: diagnostic
+  - platform: template
+    name: "Weather FC Status"
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: 'return id(fc_status);'
 
   - platform: homeassistant
     id: card_records
@@ -469,19 +498,6 @@ text_sensor:
     internal: true
     entity_id: ${weather_entity}
 
-  # 天气预报（列表属性，取第一条: 今天的高温/低温）
-  - platform: homeassistant
-    id: weather_forecast
-    name: "Weather Forecast"
-    internal: true
-    entity_id: ${weather_entity}
-    attribute: "forecast"
-    on_value:
-      then:
-        - lambda: |-
-            id(fc_raw) = x;
-            id(parse_forecast).execute();
-
 button:
   - platform: restart
     name: "Restart"
@@ -491,14 +507,43 @@ output:
   - platform: gpio
     pin: GPIO21
     id: bsp_battery_enable
+  - platform: gpio
+    pin: GPIO16
+    id: bsp_sd_enable
+  - platform: gpio
+    pin: GPIO38
+    id: mic_power_enable
+  - platform: gpio
+    pin: GPIO6
+    id: led_output
+    inverted: true
   - platform: ledc
     pin: GPIO45
     id: buzzer_pwm
     frequency: 1000Hz
 
+# PDM 麦克风（时钟 GPIO42 / 数据 GPIO41）
+i2s_audio:
+  i2s_lrclk_pin: GPIO42
+
+microphone:
+  - platform: i2s_audio
+    id: onboard_mic
+    adc_type: external
+    pdm: true
+    i2s_din_pin: GPIO41
+
 binary_sensor:
   - platform: status
     name: "API Connected"
+    entity_category: diagnostic
+  - platform: gpio
+    pin:
+      number: GPIO15
+      mode: INPUT_PULLUP
+      inverted: true
+    id: sd_card_detect
+    name: "SD Card Detected"
     entity_category: diagnostic
   - platform: gpio
     pin:
@@ -514,6 +559,11 @@ binary_sensor:
       inverted: true
     id: key2
     name: "Key2"
+    on_press:
+      - lambda: |-
+          id(page_auto) = false;
+          id(page_index) = (id(page_index) + 1) % 2;
+      - component.update: epaper_display
   - platform: gpio
     pin:
       number: GPIO5
@@ -522,15 +572,33 @@ binary_sensor:
     id: key3
     name: "Key3"
     on_press:
+      - light.turn_on:
+          id: buzzer
+          brightness: 50%
+      - delay: 100ms
+      - light.turn_off: buzzer
       - component.update: epaper_display
+
+interval:
+  - interval: 1h
+    then:
+      - script.execute: fetch_forecast
+  - interval: 5min
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(fc_valid);'
+          then:
+            - script.execute: fetch_forecast
 
 time:
   - platform: sntp
     id: sntp_time
     timezone: Asia/Shanghai
     on_time_sync:
-      # 时间同步后重新解析明细（处理数据先于时间到达的情况）
+      # 网络时间同步后写入硬件 RTC，并重新解析明细
       then:
+        - pcf8563.write_time:
         - script.execute: parse_records
     on_time:
       # 每个整点触发（1~6 点不刷新）
@@ -544,6 +612,10 @@ time:
                   return !(now.hour >= 1 && now.hour < 6);
               then:
                 - component.update: epaper_display
+  - platform: pcf8563
+    id: rtc_time
+    address: 0x51
+    update_interval: never
 
 # ---------------------------------------------------------------------
 # 字体（本地 fonts/ 目录，无需联网下载）
@@ -592,6 +664,12 @@ font:
   - file:
       type: local
       path: fonts/ZenMaruGothicSC-Bold.ttf
+    id: f_range
+    size: 24
+    glyphs: "0123456789.-~℃"
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Bold.ttf
     id: f_title
     size: 20
     glyphs: "校园卡消费日报"
@@ -627,6 +705,37 @@ font:
     glyphs: "0123456789.-%°Cd Bm"
   - file:
       type: local
+      path: fonts/materialdesignicons-webfont.ttf
+    id: f_icon
+    size: 22
+    glyphs:
+      - "\U000F050F"  # thermometer
+      - "\U000F058E"  # water-percent (湿度)
+      - "\U000F091F"  # wifi-strength-1
+      - "\U000F0922"  # wifi-strength-2
+      - "\U000F0925"  # wifi-strength-3
+      - "\U000F0928"  # wifi-strength-4
+      - "\U000F092D"  # wifi-strength-off
+      - "\U000F0079"  # battery (满)
+      - "\U000F007A"  # battery-10
+      - "\U000F007B"  # battery-20
+      - "\U000F007C"  # battery-30
+      - "\U000F007D"  # battery-40
+      - "\U000F007E"  # battery-50
+      - "\U000F007F"  # battery-60
+      - "\U000F0080"  # battery-70
+      - "\U000F0081"  # battery-80
+      - "\U000F0082"  # battery-90
+      - "\U000F008E"  # battery-outline
+      - "\U000F0083"  # battery-alert
+  - file:
+      type: local
+      path: fonts/ZenMaruGothicSC-Medium.ttf
+    id: f_strip
+    size: 14
+    glyphs: "0123456789.-%°dBm"
+  - file:
+      type: local
       path: fonts/ZenMaruGothicSC-Medium.ttf
     id: f_small
     size: 12
@@ -636,7 +745,7 @@ font:
       path: fonts/ZenMaruGothicSC-Bold.ttf
     id: f_th
     size: 15
-    glyphs: "时间地点金额余"
+    glyphs: "时间地点金额余日一二三四五六"
   - file:
       type: local
       path: fonts/ZenMaruGothicSC-Medium.ttf
@@ -661,13 +770,18 @@ display:
       inverted: true
     update_interval: never   # 手动刷新：整点 / 按键 / Refresh 开关 / HA 数据变化
     lambda: |-
-      id(disp_count)++;                     // 刷新次数统计（诊断）
       auto BLACK = Color(0, 0, 0);
       auto WHITE = Color(255, 255, 255);
       auto RED   = Color(255, 0, 0);
       auto GREEN = Color(0, 255, 0);
       auto BLUE  = Color(0, 0, 255);
       auto YELLOW = Color(255, 255, 0);
+      id(disp_count)++;                     // 刷新次数统计（诊断）
+      // 电量 <5% 清屏保护（防残影；充电回升后自动恢复显示）
+      if (id(screen_blank) || (!isnan(id(battery_level).state) && id(battery_level).state < 5)) {
+        it.fill(WHITE);
+        return;
+      }
       it.fill(WHITE);
 
       // 圆角矩形填充（HTML 圆角 20px/16px 的近似）
@@ -680,9 +794,9 @@ display:
         it.filled_circle(x + r, y + ht - r - 1, r, c);
         it.filled_circle(x + wd - r - 1, y + ht - r - 1, r, c);
       };
-      // 圆角描边（thick=1/2）
-      auto round_frame = [&](int x, int y, int wd, int ht, int r, int thick) {
-        round_fill(x, y, wd, ht, r, BLACK);
+      // 圆角描边（thick=1/2，白色内芯）
+      auto round_frame = [&](int x, int y, int wd, int ht, int r, int thick, Color c) {
+        round_fill(x, y, wd, ht, r, c);
         round_fill(x + thick, y + thick, wd - 2 * thick, ht - 2 * thick,
                    r - thick > 0 ? r - thick : 1, WHITE);
       };
@@ -691,18 +805,55 @@ display:
       static const char *WDS[7] = {"日", "一", "二", "三", "四", "五", "六"};
       const char *wd = now.is_valid() ? WDS[(now.day_of_week - 1 + 7) % 7] : "";
 
-      // ============ 左侧：日期 / 时间（蓝底白字）============
-      round_fill(12, 12, 292, 84, 10, BLUE);
+      // ============ 顶部图标条：室内温度 / 湿度 / Wi-Fi / 电池 ============
+      float t = id(temp_sensor).state;
+      float h = id(hum_sensor).state;
+      float w = id(wifi_signal1).state;
+      float b = id(battery_level).state;
+      // 温度：图标+数值横排
+      it.printf(12, 16, id(f_icon), BLUE, display::TextAlign::TOP_LEFT, "\U000F050F");
+      if (isnan(t)) it.printf(40, 20, id(f_strip), BLUE, display::TextAlign::TOP_LEFT, "--");
+      else it.printf(40, 20, id(f_strip), BLUE, display::TextAlign::TOP_LEFT, "%.1f°", t);
+      // 湿度：图标+数值横排
+      it.printf(104, 16, id(f_icon), BLUE, display::TextAlign::TOP_LEFT, "\U000F058E");
+      if (isnan(h)) it.printf(132, 20, id(f_strip), BLUE, display::TextAlign::TOP_LEFT, "--");
+      else it.printf(132, 20, id(f_strip), BLUE, display::TextAlign::TOP_LEFT, "%.0f%%", h);
+      // Wi-Fi：仅图标（按强度变色：蓝/黄/红）
+      static const char *BAT_IC[10] = {"\U000F007A", "\U000F007B", "\U000F007C", "\U000F007D",
+                                       "\U000F007E", "\U000F007F", "\U000F0080", "\U000F0081",
+                                       "\U000F0082", "\U000F0079"};
+      std::string wf_ic = "\U000F092D";
+      Color wcol = RED;
+      if (!isnan(w)) {
+        if (w >= -60) { wf_ic = "\U000F0928"; wcol = BLUE; }
+        else if (w >= -70) { wf_ic = "\U000F0925"; wcol = BLUE; }
+        else if (w >= -80) { wf_ic = "\U000F0922"; wcol = YELLOW; }
+        else { wf_ic = "\U000F091F"; wcol = RED; }
+      }
+      it.printf(210, 16, id(f_icon), wcol, display::TextAlign::TOP_LEFT, "%s", wf_ic.c_str());
+      // 电池：仅图标（按电量变色：蓝/黄/红，<20% 红色警示图标）
+      std::string bat_ic = "\U000F0083";
+      Color bcol = RED;
+      if (!isnan(b)) {
+        if (b < 20) { bcol = RED; bat_ic = "\U000F0083"; }
+        else {
+          bcol = (b >= 50) ? BLUE : YELLOW;
+          bat_ic = (b >= 95) ? "\U000F0079" : BAT_IC[std::min(8, std::max(1, (int)(b / 10)) - 1)];
+        }
+      }
+      it.printf(270, 16, id(f_icon), bcol, display::TextAlign::TOP_LEFT, "%s", bat_ic.c_str());
+
+      // ============ 日期 / 时间（蓝底白字）============
+      round_fill(12, 70, 292, 84, 10, BLUE);
       if (now.is_valid()) {
-        it.printf(158, 20, id(f_date), WHITE, display::TextAlign::TOP_CENTER, "%d年%d月%d日 星期%s", now.year, now.month, now.day_of_month, wd);
-        it.printf(158, 54, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "%02d:%02d", now.hour, now.minute);
+        it.printf(158, 78, id(f_date), WHITE, display::TextAlign::TOP_CENTER, "%d年%d月%d日 星期%s", now.year, now.month, now.day_of_month, wd);
+        it.printf(158, 112, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "%02d:%02d", now.hour, now.minute);
       } else {
-        it.printf(158, 54, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "--:--");
+        it.printf(158, 112, id(f_clock), WHITE, display::TextAlign::TOP_CENTER, "--:--");
       }
 
-      const int lx = 24, rx = 294;
-
-      // 天气：大图标 + 今日高/低温（不显示实时温度与文字描述）
+      // 蓝卡：天气（白色大图标 + 温度区间）
+      round_fill(12, 166, 292, 56, 10, BLUE);
       std::string wst = id(weather_condition).state;
       std::string wicon = "";
       if (wst == "sunny") { wicon = "\U000F0599"; }
@@ -720,45 +871,58 @@ display:
       else if (wst == "windy") { wicon = "\U000F059D"; }
       else if (wst == "windy-variant") { wicon = "\U000F059E"; }
       if (!wicon.empty())
-        it.printf(lx, 112, id(f_weather), BLUE, display::TextAlign::TOP_LEFT, "%s", wicon.c_str());
-      if (id(fc_valid)) {
+        it.printf(24, 174, id(f_weather), WHITE, display::TextAlign::TOP_LEFT, "%s", wicon.c_str());
+      if (id(fc_valid) && !isnan(id(fc_high))) {
         if (id(fc_has_low))
-          it.printf(rx, 124, id(f_small), BLUE, display::TextAlign::TOP_RIGHT, "高%.0f° 低%.0f°", id(fc_high), id(fc_low));
+          it.printf(288, 184, id(f_range), WHITE, display::TextAlign::TOP_RIGHT, "%.0f~%.0f℃", id(fc_low), id(fc_high));
         else
-          it.printf(rx, 124, id(f_small), BLUE, display::TextAlign::TOP_RIGHT, "高%.0f°", id(fc_high));
+          it.printf(288, 184, id(f_range), WHITE, display::TextAlign::TOP_RIGHT, "%.0f℃", id(fc_high));
+      } else {
+        it.printf(288, 184, id(f_range), WHITE, display::TextAlign::TOP_RIGHT, "--");
       }
 
-      int ly = 172;
-      int rowi = 0;
-      auto left_row = [&](const char *label, const char *val, Color vc) {
-        it.printf(lx, ly, id(f_label), BLUE, display::TextAlign::TOP_LEFT, "%s", label);
-        it.printf(rx, ly - 4, id(f_val), vc, display::TextAlign::TOP_RIGHT, "%s", val);
-        if (++rowi < 4) it.line(lx, ly + 42, rx, ly + 42, BLUE);
-        ly += 56;
-      };
-      static char vbuf[24];
-      float t = id(temp_sensor).state;
-      float h = id(hum_sensor).state;
-      float w = id(wifi_signal1).state;
-      float b = id(battery_level).state;
-      if (isnan(t)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.1f°C", t);
-      left_row("室内温度", vbuf, BLACK);
-      if (isnan(h)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.0f%%", h);
-      left_row("室内湿度", vbuf, BLACK);
-      if (isnan(w)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%d dBm", (int) w);
-      left_row("Wi-Fi", vbuf, BLACK);
-      if (isnan(b)) snprintf(vbuf, sizeof(vbuf), "--"); else snprintf(vbuf, sizeof(vbuf), "%.0f%%", b);
-      left_row("电池", vbuf, (!isnan(b) && b < 20) ? RED : BLACK);   // 低电量标红
-
-      // 面板分隔线
-      it.filled_rectangle(316, 0, 2, 480, BLACK);
+      // 红色面板分隔线
+      it.filled_rectangle(316, 0, 2, 480, RED);
 
       // ============ 右侧：校园卡消费日报卡片（仿 dk-card-report.html）============
       const int cx = 336, cy = 12, cw = 448, chh = 456;
-      round_frame(cx, cy, cw, chh, 10, 2);   // 卡片圆角边框 2px
+      round_frame(cx, cy, cw, chh, 10, 2, BLUE);   // 卡片圆角边框 2px 蓝色
       const int ix = cx + 24;                // 内容左边界 360
       const int ir = cx + cw - 24;           // 内容右边界 760
       const int num_r = ix + 360;            // 数字右对齐位置 720
+
+      // 页面选择：0=校园卡消费日报 1=月日历；当日无消费时默认日历页
+      if (id(page_auto)) {
+        id(page_index) = (id(rec_today_count) == 0) ? 1 : 0;
+      }
+      if (id(page_index) == 1) {
+        // ============ 月日历页（今天黄圈高亮）============
+        it.printf(560, 88, id(f_date), BLACK, display::TextAlign::TOP_CENTER, "%d年%d月", now.year, now.month);
+        static const char *WD[7] = {"日", "一", "二", "三", "四", "五", "六"};
+        for (int c = 0; c < 7; c++)
+          it.printf(ix + c * 57 + 28, 122, id(f_th), (c == 0 || c == 6) ? RED : BLACK, display::TextAlign::TOP_CENTER, "%s", WD[c]);
+        it.line(ix, 146, ir, 146, BLACK);
+        int dim = 31;
+        if (now.month == 2) dim = ((now.year % 4 == 0 && now.year % 100 != 0) || now.year % 400 == 0) ? 29 : 28;
+        else if (now.month == 4 || now.month == 6 || now.month == 9 || now.month == 11) dim = 30;
+        int dow1 = ((now.day_of_week - now.day_of_month) % 7 + 7) % 7;   // 0=周日
+        for (int r = 0; r < 6; r++) {
+          for (int c = 0; c < 7; c++) {
+            int day = r * 7 + c - dow1 + 1;
+            if (day < 1 || day > dim) continue;
+            int cx2 = ix + c * 57 + 28;
+            int cy2 = 160 + r * 50;
+            bool weekend = (c == 0 || c == 6);   // 周日/周六列
+            if (day == now.day_of_month) {
+              round_fill(cx2 - 24, cy2 - 9, 48, 36, 6, BLACK);   // 今天：黑底白字
+              it.printf(cx2, cy2 - 14, id(f_big), WHITE, display::TextAlign::TOP_CENTER, "%d", day);
+            } else {
+              it.printf(cx2, cy2 - 14, id(f_big), weekend ? RED : BLACK, display::TextAlign::TOP_CENTER, "%d", day);
+            }
+          }
+        }
+      } else {
+        // ============ 校园卡消费日报页 ============
 
       // -- 头部蓝色横幅（白字标题居中，顶角与卡片同圆角）--
       round_fill(cx + 2, cy + 2, cw - 4, 64, 8, BLUE);
@@ -809,11 +973,16 @@ display:
         ry += 33;
       }
 
-      // -- 昨日消费框（绿底）--
+      // -- 昨日消费框（白底绿边，黑字更清晰）--
       float ysum = isnan(id(card_yesterday_total).state) ? 0.0f : id(card_yesterday_total).state;
       int by = ry + 8;
-      round_fill(ix, by, ir - ix, 42, 7, GREEN);
+      round_frame(ix, by, ir - ix, 42, 7, 2, GREEN);
       it.printf(ix + 18, by + 14, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "昨日消费");
       it.printf(num_r, by + 9, id(f_mon), BLACK, display::TextAlign::TOP_RIGHT, "%.2f", ysum);
       it.printf(num_r + 8, by + 16, id(f_label), BLACK, display::TextAlign::TOP_LEFT, "元");
+      }
+      // 页码指示点
+      it.circle(738, 456, 4, BLUE);
+      it.circle(754, 456, 4, BLUE);
+      it.filled_circle((id(page_index) == 0) ? 738 : 754, 456, 4, BLUE);
 
