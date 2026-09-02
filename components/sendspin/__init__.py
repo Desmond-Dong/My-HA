@@ -238,10 +238,12 @@ async def to_code(config: ConfigType) -> None:
     if data.artwork_support:
         cg.add_define("USE_SENDSPIN_ARTWORK", True)
 
+        # sendspin-cpp 0.7.x ImageSlotPreference dropped the explicit slot
+        # member (slots are implicit by index; prefer per-index registration)
+        # and added require_frame_done / display_offset_ms. Keep defaults.
         preference_structs = [
             cg.StructInitializer(
                 ImageSlotPreference,
-                ("slot", pref[CONF_SLOT]),
                 ("source", pref[CONF_SOURCE]),
                 ("format", pref[CONF_FORMAT]),
                 ("width", pref[CONF_WIDTH]),
