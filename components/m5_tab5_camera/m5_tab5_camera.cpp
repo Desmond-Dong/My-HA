@@ -255,6 +255,14 @@ bool M5Tab5Camera::init_camera_sensor_() {
   esp_log_level_set("esp_ipa_adn", ESP_LOG_WARN);
   esp_log_level_set("esp_ipa_acc", ESP_LOG_WARN);
   esp_log_level_set("isp_task", ESP_LOG_WARN);
+  // The SC202CS auto color-correction can compute a CCM channel > +4.0, which
+  // the P4 ISP rejects. The ISP keeps the previous CCM (harmless), but logs the
+  // rejection every frame -> blocking UART spam. Silence those tags like the
+  // official espp/m5stack-tab5 BSP does.
+  esp_log_level_set("ISP_CCM", ESP_LOG_NONE);
+  esp_log_level_set("ISP", ESP_LOG_NONE);
+  esp_log_level_set("isp_video", ESP_LOG_NONE);
+  esp_log_level_set("esp_video", ESP_LOG_NONE);
 
   // 5. V4L2 capture setup
   // BSP_CAMERA_DEVICE = ESP_VIDEO_MIPI_CSI_DEVICE_NAME = "/dev/video0"
