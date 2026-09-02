@@ -197,7 +197,7 @@ class SendspinHub final : public Component,
 #ifdef USE_SENDSPIN_ARTWORK
   void on_image_decode(uint8_t slot, const uint8_t *data, size_t length, sendspin::SendspinImageFormat format) override;
 
-  void on_image_display(uint8_t slot) override;
+  void on_image_display(uint8_t slot, uint32_t lateness_ms) override;
 
   void on_image_clear(uint8_t slot) override;
 
