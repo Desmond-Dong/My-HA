@@ -57,7 +57,7 @@ template<typename... Ts> class RequestAction : public Action<Ts...> {
  public:
   explicit RequestAction(LyricsFetcher *parent) : parent_(parent) {}
   TEMPLATABLE_VALUE(std::string, url)
-  void play() override { this->parent_->request(this->url_.value()); }
+  void play(const Ts &...x) override { this->parent_->request(this->url_.value(x...)); }
 
  protected:
   LyricsFetcher *parent_;
