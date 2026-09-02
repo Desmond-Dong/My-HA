@@ -5,7 +5,10 @@
 namespace esphome {
 namespace rs485_bridge {
 
-// Self-contained WebSocket console page served at GET /rs485/ and /rs485.
+// Self-contained polling console page served at GET /rs485/ by the shared
+// ESPHome web server. Polls GET /rs485/rx?raw=1 (drains the bridge's ring
+// buffer server-side, so nothing is lost between polls) and POSTs to
+// /rs485/tx. No WebSocket involved.
 static const char kPageHtml[] = R"HTML(
 <!DOCTYPE html>
 <html lang="zh">
@@ -28,13 +31,12 @@ static const char kPageHtml[] = R"HTML(
 <body>
 <h1>RS485 Bridge &mdash; Tab5</h1>
 <div class="bar">
-  <label>服务器: ws://<span id="host"></span><span id="wspath"></span></label>
-  <button id="btnConnect">连接</button>
-  <button id="btnDisconnect" disabled>断开</button>
+  <label>地址: http://<span id="host"></span>/rs485/</label>
+  <button id="btnPause">暂停接收</button>
   <button id="btnClear">清屏</button>
   <button id="btnRefresh">刷新状态</button>
 </div>
-<div id="status">未连接</div>
+<div id="status">轮询中</div>
 <div class="bar">
   <label>模式:
     <select id="mode"><option value="hex">HEX</option><option value="text">TEXT</option></select>
@@ -45,17 +47,18 @@ static const char kPageHtml[] = R"HTML(
 <div id="log"></div>
 <script>
 "use strict";
-var ws = null, hostEl = document.getElementById("host"), pathEl = document.getElementById("wspath");
+var paused = false, busy = false;
+var hostEl = document.getElementById("host");
 var logEl = document.getElementById("log"), statusEl = document.getElementById("status");
-var btnConnect = document.getElementById("btnConnect"), btnDisconnect = document.getElementById("btnDisconnect");
-var btnSend = document.getElementById("btnSend"), btnClear = document.getElementById("btnClear");
-var btnRefresh = document.getElementById("btnRefresh");
-hostEl.textContent = location.hostname; pathEl.textContent = "/rs485/ws";
+var btnPause = document.getElementById("btnPause"), btnClear = document.getElementById("btnClear");
+var btnSend = document.getElementById("btnSend"), btnRefresh = document.getElementById("btnRefresh");
+hostEl.textContent = location.hostname;
 function log(line, cls) {
   var pre = document.createElement("div");
   if (cls) pre.style.color = cls;
   pre.textContent = line;
   logEl.appendChild(pre);
+  while (logEl.childNodes.length > 500) logEl.removeChild(logEl.firstChild);
   logEl.scrollTop = logEl.scrollHeight;
 }
 function setStatus(t, ok) { statusEl.textContent = t; statusEl.style.color = ok ? "#9f9" : "#f99"; }
@@ -68,8 +71,10 @@ function fromHex(str) {
   var t = str.replace(/[\s,;]+/g, "");
   if (t.length % 2 !== 0) throw "长度必须是偶数";
   var out = new Uint8Array(t.length / 2);
-  for (var i = 0; i < out.length; i++) out[i] = parseInt(t.substr(i * 2, 2), 16);
-  if (isNaN(out[0] * 0)) throw "包含非 HEX 字符";
+  for (var i = 0; i < out.length; i++) {
+    out[i] = parseInt(t.substr(i * 2, 2), 16);
+    if (isNaN(out[i])) throw "包含非 HEX 字符";
+  }
   return out;
 }
 function render(buf) {
@@ -80,47 +85,52 @@ function render(buf) {
   }
   log("[RX] " + (hex || "(空)") + (txt ? "  |  " + txt : ""));
 }
-function connect() {
-  var proto = location.protocol === "https:" ? "wss://" : "ws://";
-  var url = proto + location.host + "/rs485/ws";
-  try { ws = new WebSocket(url); } catch (e) { setStatus("连接失败: " + e.message, false); return; }
-  ws.binaryType = "arraybuffer";
-  ws.onopen = function() {
-    setStatus("已连接 " + url, true);
-    btnConnect.disabled = true; btnDisconnect.disabled = false;
-    log("已连接 " + url, "#6af");
-  };
-  ws.onmessage = function(ev) { render(new Uint8Array(ev.data)); };
-  ws.onerror = function() { setStatus("错误: 连接断开或无任何数据", false); };
-  ws.onclose = function() {
-    setStatus("已断开", false);
-    btnConnect.disabled = false; btnDisconnect.disabled = true;
-  };
+async function pollRx() {
+  if (paused || busy || document.hidden) return;
+  busy = true;
+  try {
+    var r = await fetch("/rs485/rx?raw=1", {cache: "no-store"});
+    var buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length) render(buf);
+    setStatus("轮询中 (" + (paused ? "已暂停" : "活动") + ")", true);
+  } catch (e) {
+    setStatus("读取失败: " + e.message, false);
+  } finally {
+    busy = false;
+  }
 }
-function disconnect() { if (ws) { try { ws.close(); } catch (e) {} ws = null; } }
-btnConnect.onclick = connect;
-btnDisconnect.onclick = disconnect;
+btnPause.onclick = function() {
+  paused = !paused;
+  btnPause.textContent = paused ? "恢复接收" : "暂停接收";
+};
 btnClear.onclick = function() { logEl.innerHTML = ""; };
-btnSend.onclick = function() {
+btnSend.onclick = async function() {
   var mode = document.getElementById("mode").value;
   var raw = document.getElementById("tx").value;
   if (!raw) return;
-  if (!ws || ws.readyState !== 1) { setStatus("未连接", false); return; }
+  var bytes;
   try {
-    var bytes = (mode === "hex") ? fromHex(raw) : new TextEncoder().encode(raw);
+    bytes = (mode === "hex") ? fromHex(raw) : new TextEncoder().encode(raw);
   } catch (e) { setStatus("输入错误: " + e.message, false); return; }
-  ws.send(bytes);
-  log("[TX] " + toHex(bytes), "#fa0");
+  try {
+    var r = await fetch("/rs485/tx", {method: "POST", body: bytes});
+    var j = await r.json();
+    log("[TX] " + toHex(bytes) + "  (" + j.written + " 字节)", "#fa0");
+  } catch (e) {
+    setStatus("发送失败: " + e.message, false);
+  }
 };
 btnRefresh.onclick = function() {
   fetch("/rs485/status").then(function(r) { return r.json(); }).then(function(j) {
-    setStatus("波特率 " + j.baud_rate + " | RX待读 " + j.rx_waiting + " | WS " + j.ws_clients +
+    setStatus("波特率 " + j.baud_rate + " | RX待读 " + j.rx_waiting +
               " | tx_total " + j.tx_total + " | rx_total " + j.rx_total, true);
   }).catch(function() { setStatus("无法读取状态", false); });
 };
 document.getElementById("tx").addEventListener("keydown", function(e) {
   if (e.key === "Enter") btnSend.onclick();
 });
+setInterval(pollRx, 300);
+pollRx();
 </script>
 </body>
 </html>

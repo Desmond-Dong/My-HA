@@ -167,12 +167,11 @@ ota:
   platform: esphome
 
 # M5Stack Tab5 RS-485 (SIT3088): TX=GPIO20 RX=GPIO21 DIR=GPIO34, half-duplex.
-# Web passthrough services exposed by the firmware:
-#   ws://<ip>:8080/rs485/ws    full-duplex raw byte bridge (WebSocket)
-#   POST /rs485/tx             send raw bytes to the bus
-#   GET  /rs485/rx             read buffered bytes (?raw=1 for bytes, ?clear=0 to keep)
-#   GET  /rs485/status         JSON config + counters
-#   http://<ip>:8080/rs485/    built-in WebSocket console
+# Web endpoints served by ESPHome's web_server component (port 80, no extra server):
+#   POST /rs485/tx        send raw bytes to the bus
+#   GET  /rs485/rx        read buffered bytes (?raw=1 for bytes, ?clear=0 to keep)
+#   GET  /rs485/status    JSON config + counters
+#   http://<ip>/rs485/    polling console page
 rs485_bridge:
   tx_pin: 20
   rx_pin: 21
@@ -181,7 +180,10 @@ rs485_bridge:
   data_bits: 8
   stop_bits: 1
   parity: NONE
-  port: 8080
+
+# Default ESPHome web dashboard (entity list + OTA page + RS-485 console at /rs485/)
+web_server:
+  port: 80
 
 wifi:
   ssid: !secret wifi_ssid
@@ -309,6 +311,18 @@ switch:
       - script.execute: standby_screen_activity
     on_turn_off:
       - script.execute: standby_screen_activity
+
+  # The Tab5's RS-485 120-ohm terminator is a mechanical DIP switch in the A/B
+  # line path with no connection to any MCU pin, so its physical position cannot
+  # be read electrically. This virtual switch is a manual record: toggle it in HA
+  # to match the physical DIP position next to the RS-485 port.
+  - platform: template
+    id: rs485_terminator_120r
+    name: "RS485 120Ω Terminator"
+    icon: "mdi:resistor"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
 
 binary_sensor:
   - platform: gpio

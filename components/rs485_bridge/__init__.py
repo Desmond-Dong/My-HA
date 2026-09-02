@@ -1,4 +1,4 @@
-"""RS485 over web passthrough bridge for the M5Stack Tab5.
+"""RS485 web passthrough bridge for the M5Stack Tab5.
 
 Hardware (per M5Stack Tab5 official docs):
   - SIT3088 RS-485 transceiver, half-duplex
@@ -6,22 +6,22 @@ Hardware (per M5Stack Tab5 official docs):
   - The ESP32-P4 UART supports native RS485 half-duplex mode where the RTS
     line drives the transceiver's DE/RE pin automatically (no GPIO toggling).
 
-Services exposed by the firmware's esp_http_server instance:
-  - WebSocket  /rs485/ws  full-duplex raw byte passthrough (binary frames)
-  - REST       POST /rs485/tx   send raw bytes to the bus (body = raw bytes)
-  - REST       GET  /rs485/rx   read buffered bytes ({n, hex}, ?raw=1, ?clear=0)
+Endpoints served by ESPHome's web_server component (same port, no extra
+HTTP server instance):
+  - REST       POST /rs485/tx    send raw bytes to the bus (body = raw bytes)
+  - REST       GET  /rs485/rx    read buffered bytes ({n, hex}, ?raw=1, ?clear=0)
   - REST       GET  /rs485/status  configuration + counters (JSON)
-  - Web page   GET  /rs485/     built-in WebSocket console
+  - Web page   GET  /rs485/      polling console page
+Requires the `web_server` component (auto-loaded).
 """
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import esp32
 from esphome.const import CONF_ID
 
 CODEOWNERS = []
-DEPENDENCIES = []
-CONFLICTS_WITH = ["web_server"]  # shares the HTTP server port space
+DEPENDENCIES = ["web_server_base"]
+AUTO_LOAD = ["web_server"]
 
 CONF_TX_PIN = "tx_pin"
 CONF_RX_PIN = "rx_pin"
@@ -31,7 +31,6 @@ CONF_BAUD_RATE = "baud_rate"
 CONF_DATA_BITS = "data_bits"
 CONF_STOP_BITS = "stop_bits"
 CONF_PARITY = "parity"
-CONF_PORT = "port"
 CONF_RX_BUFFER_SIZE = "rx_buffer_size"
 CONF_TX_BUFFER_SIZE = "tx_buffer_size"
 CONF_RX_HOLD_BYTES = "rx_hold_bytes"
@@ -68,7 +67,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_DATA_BITS, default=8): cv.one_of(5, 6, 7, 8),
             cv.Optional(CONF_STOP_BITS, default=1): cv.one_of(1.0, 1.5, 2.0),
             cv.Optional(CONF_PARITY, default="NONE"): cv.one_of("NONE", "EVEN", "ODD"),
-            cv.Optional(CONF_PORT, default=8080): cv.int_range(min=1, max=65535),
             cv.Optional(CONF_RX_BUFFER_SIZE, default=4096): cv.int_range(min=256, max=16384),
             cv.Optional(CONF_TX_BUFFER_SIZE, default=4096): cv.int_range(min=256, max=16384),
             cv.Optional(CONF_RX_HOLD_BYTES, default=4096): cv.int_range(min=1024, max=65536),
@@ -91,12 +89,6 @@ async def to_code(config):
     cg.add(var.set_data_bits(cg.RawExpression(_DATA_BITS[config[CONF_DATA_BITS]])))
     cg.add(var.set_stop_bits(cg.RawExpression(_STOP_BITS[float(config[CONF_STOP_BITS])])))
     cg.add(var.set_parity(cg.RawExpression(_PARITY[config[CONF_PARITY]])))
-    cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     cg.add(var.set_tx_buffer_size(config[CONF_TX_BUFFER_SIZE]))
     cg.add(var.set_rx_hold_bytes(config[CONF_RX_HOLD_BYTES]))
-
-    # esp_http_server is excluded from the ESPHome IDF build by default; un-exclude it
-    # and enable its WebSocket support.
-    esp32.include_builtin_idf_component("esp_http_server")
-    esp32.add_idf_sdkconfig_option("CONFIG_HTTPD_WS_SUPPORT", True)
