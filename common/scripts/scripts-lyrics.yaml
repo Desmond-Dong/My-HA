@@ -1,0 +1,158 @@
+# Lyrics Scripts: Fetch from LRCLIB and sync with playback progress
+script:
+  - id: fetch_lyrics
+    parameters:
+      title: string
+      artist: string
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: 'return !title.empty();'
+              - lambda: 'return !(title == id(lyrics_last_title) && artist == id(lyrics_last_artist));'
+          then:
+            - lambda: |-
+                id(lyrics_last_title) = title;
+                id(lyrics_last_artist) = artist;
+                id(lyrics_has_lyrics) = false;
+                id(lyrics_current_index) = -1;
+                id(lyrics_raw_lrc).clear();
+                lv_obj_add_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(id(lyrics_label), "");
+            - http_request.get:
+                url: !lambda |-
+                  auto url_encode = [](const std::string &s) -> std::string {
+                    std::string result;
+                    for (unsigned char c : s) {
+                      bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+                      if (alnum || c == '-' || c == '_' || c == '.' || c == '~') {
+                        result += (char) c;
+                      } else if (c == ' ') {
+                        result += '+';
+                      } else {
+                        char buf[4];
+                        snprintf(buf, sizeof(buf), "%%%02X", c);
+                        result += buf;
+                      }
+                    }
+                    return result;
+                  };
+                  return "https://lrclib.net/api/search?track_name=" + url_encode(title) +
+                         "&artist_name=" + url_encode(artist);
+                capture_response: true
+                max_response_buffer_size: 16384
+                on_response:
+                  - lambda: |-
+                      if (body.empty()) return;
+                      json::JsonDocument doc = json::parse_json(body);
+                      JsonArray array = doc.as<JsonArray>();
+                      if (array.isNull()) return;
+                      uint32_t duration_ms = id(sendspin_hub).get_track_duration_ms();
+                      const char* best_synced = nullptr;
+                      float best_delta = 1e9f;
+                      for (JsonObject item : array) {
+                        const char* synced = item["syncedLyrics"];
+                        if (synced == nullptr || synced[0] == '\0') continue;
+                        if (duration_ms > 0) {
+                          float dur = item["duration"] | 0.0f;
+                          if (dur > 0) {
+                            float delta = fabsf(dur * 1000.0f - (float) duration_ms);
+                            if (delta < best_delta) {
+                              best_delta = delta;
+                              best_synced = synced;
+                            }
+                            continue;
+                          }
+                        }
+                        best_synced = synced;
+                        break;
+                      }
+                      if (best_synced != nullptr) {
+                        id(lyrics_raw_lrc) = best_synced;
+                        id(lyrics_has_lyrics) = true;
+                        id(lyrics_current_index) = -1;
+                        lv_obj_clear_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
+                        id(lyrics_loop)->execute();
+                      }
+
+  - id: update_lyric_line
+    then:
+      - lambda: |-
+          if (!id(lyrics_has_lyrics) || id(lyrics_raw_lrc).empty()) return;
+          uint32_t progress = id(sendspin_hub).get_track_progress_ms();
+          progress += 600;  // advance to compensate for audio buffering
+          const std::string &lrc = id(lyrics_raw_lrc);
+          int best_index = -1;
+          int current_line = 0;
+          size_t pos = 0;
+          while (pos < lrc.size()) {
+            size_t bs = lrc.find('[', pos);
+            if (bs == std::string::npos) break;
+            size_t be = lrc.find(']', bs);
+            if (be == std::string::npos) break;
+            std::string time_str = lrc.substr(bs + 1, be - bs - 1);
+            int min = 0;
+            float sec = 0.0f;
+            if (sscanf(time_str.c_str(), "%d:%f", &min, &sec) == 2) {
+              uint32_t line_ms = (uint32_t) ((min * 60 + sec) * 1000);
+              if (line_ms <= progress) {
+                best_index = current_line;
+              } else {
+                break;
+              }
+            }
+            current_line++;
+            size_t le = lrc.find('\n', be);
+            if (le == std::string::npos) break;
+            pos = le + 1;
+          }
+          if (best_index == id(lyrics_current_index)) return;
+          id(lyrics_current_index) = best_index;
+          if (best_index < 0) {
+            lv_label_set_text(id(lyrics_label), "");
+            return;
+          }
+          int line_num = 0;
+          size_t p2 = 0;
+          while (p2 < lrc.size()) {
+            size_t bs2 = lrc.find('[', p2);
+            if (bs2 == std::string::npos) break;
+            size_t be2 = lrc.find(']', bs2);
+            if (be2 == std::string::npos) break;
+            size_t le2 = lrc.find('\n', be2);
+            if (le2 == std::string::npos) le2 = lrc.size();
+            if (line_num == best_index) {
+              std::string text = lrc.substr(be2 + 1, le2 - be2 - 1);
+              size_t start = text.find_first_not_of(" \t\r\n");
+              if (start != std::string::npos) {
+                size_t end = text.find_last_not_of(" \t\r\n");
+                text = text.substr(start, end - start + 1);
+              } else {
+                text.clear();
+              }
+              lv_label_set_text(id(lyrics_label), text.c_str());
+              break;
+            }
+            line_num++;
+            p2 = le2 + 1;
+          }
+
+  - id: lyrics_loop
+    then:
+      - while:
+          condition:
+            lambda: 'return id(lyrics_has_lyrics);'
+          then:
+            - script.execute: update_lyric_line
+            - delay: 500ms
+
+  - id: clear_lyrics
+    then:
+      - lambda: |-
+          id(lyrics_has_lyrics) = false;
+          id(lyrics_current_index) = -1;
+          id(lyrics_raw_lrc).clear();
+          id(lyrics_last_title).clear();
+          id(lyrics_last_artist).clear();
+          lv_obj_add_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
+          lv_label_set_text(id(lyrics_label), "");
