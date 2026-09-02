@@ -102,9 +102,11 @@ class M5Tab5Camera : public camera::Camera {
   std::atomic<uint8_t> single_requesters_{0};
   std::atomic<uint8_t> stream_requesters_{0};
   std::vector<camera::CameraListener *> listeners_;
-  uint32_t last_update_{0};
-  uint32_t last_capture_error_log_{0};
-  bool camera_started_{false};
+   uint32_t last_update_{0};
+   uint32_t last_capture_error_log_{0};
+   uint32_t frames_published_{0};
+   uint32_t capture_failures_{0};
+   bool camera_started_{false};
 
   /* V4L2 capture state */
   int camera_fd_{-1};

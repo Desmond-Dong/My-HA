@@ -114,13 +114,28 @@ void M5Tab5Camera::loop() {
 
   // Only capture when something is actually asking for a frame.
   uint8_t active = single_requesters_.load() | stream_requesters_.load();
-  if (active == 0) return;
+  if (active == 0) {
+    // Heartbeat so a silent "no image in HA" is distinguishable (no requesters)
+    // from a capture/encode failure (failures counter climbing).
+    static uint32_t last_diag_ms = 0;
+    uint32_t now_diag = millis();
+    if (now_diag - last_diag_ms >= 30000U) {
+      last_diag_ms = now_diag;
+      ESP_LOGI(TAG,
+               "stats: requesters=0 frames=%u failures=%u free_psram=%u "
+               "(no stream/image requested yet - open the camera in HA)",
+               static_cast<unsigned>(frames_published_), static_cast<unsigned>(capture_failures_),
+               static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    }
+    return;
+  }
 
   size_t jpeg_len = 0;
   uint8_t *jpeg = capture_jpeg_frame_(&jpeg_len);
   if (jpeg == nullptr || jpeg_len == 0) {
     // Avoid flooding HA logs while the capture/encode path is stabilised.
     uint32_t now_ms = millis();
+    capture_failures_++;
     if (now_ms - last_capture_error_log_ > 5000U) {
       ESP_LOGW(TAG, "Frame capture failed (no frame dequeued or JPEG encode failed)");
       last_capture_error_log_ = now_ms;
@@ -129,6 +144,7 @@ void M5Tab5Camera::loop() {
   }
 
   last_update_ = now;
+  frames_published_++;
   publish_frame_(jpeg, jpeg_len);
 }
 
