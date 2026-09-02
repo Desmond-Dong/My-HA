@@ -9,7 +9,7 @@
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/components/api/api_server.h"
 #include "esphome/components/m5_tab5_camera/m5_tab5_camera.h"
-#include "esphome/components/network/network.h"
+#include "esphome/components/network/util.h"
 
 #include <esp_heap_caps.h>
 
