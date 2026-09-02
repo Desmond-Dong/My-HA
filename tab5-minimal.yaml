@@ -137,19 +137,11 @@ logger:
     mipi_dsi: DEBUG
     display: DEBUG
     lvgl: DEBUG
-    # SC202CS auto-CCM computes values the P4 ISP rejects (> +/-4.0); the ISP
-    # keeps the last good matrix (image fine) but logs every frame -> busy loop.
-    # Silence the camera/ISP log tags:
-    isp_task: NONE
-    esp_ipa_ian: NONE
-    esp_ipa_awb: NONE
-    esp_ipa_agc: NONE
-    esp_ipa_adn: NONE
-    esp_ipa_acc: NONE
-    ISP_CCM: NONE
-    ISP: NONE
-    isp_video: NONE
-    esp_video: NONE
+    # ALL ESP-IDF forwarded logs (camera ISP/IPA, drivers, ...) enter ESPHome's
+    # logger with the fixed tag "esp-idf" (see esp_idf_log_vprintf_ in
+    # core/log.cpp) - per-source tags like isp_task never match. WARN keeps real
+    # driver errors visible while dropping the per-frame IPA DEBUG chatter.
+    esp-idf: WARN
 
 psram:
   mode: hex
