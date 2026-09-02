@@ -221,7 +221,10 @@ async def to_code(config: ConfigType) -> None:
         psram.request_external_task_stack()
 
     # sendspin-cpp library
-    esp32.add_idf_component(name="sendspin/sendspin-cpp", ref="0.6.1")
+    # v0.7.x: 'Fix ESP-IDF server-initiated discovery (#70)' fixes auto-discovery
+    # of the device by Music Assistant; also connection hardening, lower httpd
+    # task priority, and reduced initial playback stutter.
+    esp32.add_idf_component(name="sendspin/sendspin-cpp", ref="0.7.2")
 
     cg.add_define("USE_SENDSPIN", True)  # for MDNS
 
