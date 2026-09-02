@@ -27,7 +27,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [st7121, st7123, sendspin, generic_image, m5_tab5_camera, rs485_bridge]
+    components: [st7121, st7123, sendspin, generic_image, m5_tab5_camera, rs485_bridge, lyrics_fetcher]
 
 esphome:
   name: ${name}

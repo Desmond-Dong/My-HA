@@ -1,4 +1,48 @@
-# Lyrics Scripts: Fetch from LRCLIB and sync with playback progress
+# Lyrics Scripts: Fetch from LRCLIB via lyrics_fetcher (dedicated task) and
+# sync with playback progress. The old inline http_request blocked the main
+# event loop for seconds on every track change (TLS handshake), freezing the
+# screen, api, camera and audio - on_result/on_error here run on the main
+# loop only after the task finished the blocking I/O.
+lyrics_fetcher:
+  id: lyrics_fetch
+  on_result:
+    - lambda: |-
+        if (x.empty()) return;
+        JsonDocument doc = json::parse_json(x);
+        JsonArray array = doc.as<JsonArray>();
+        if (array.isNull()) return;
+        uint32_t duration_ms = id(sendspin_hub).get_track_duration_ms();
+        const char* best_synced = nullptr;
+        float best_delta = 1e9f;
+        for (JsonObject item : array) {
+          const char* synced = item["syncedLyrics"];
+          if (synced == nullptr || synced[0] == '\0') continue;
+          if (duration_ms > 0) {
+            float dur = item["duration"] | 0.0f;
+            if (dur > 0) {
+              float delta = fabsf(dur * 1000.0f - (float) duration_ms);
+              if (delta < best_delta) {
+                best_delta = delta;
+                best_synced = synced;
+              }
+              continue;
+            }
+          }
+          best_synced = synced;
+          break;
+        }
+        if (best_synced != nullptr) {
+          id(lyrics_raw_lrc) = best_synced;
+          id(lyrics_has_lyrics) = true;
+          id(lyrics_current_index) = -1;
+          lv_obj_clear_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
+          id(lyrics_loop)->execute();
+        }
+  on_error:
+    - logger.log:
+        level: WARN
+        format: "lyrics fetch failed"
+
 script:
   - id: fetch_lyrics
     parameters:
@@ -19,7 +63,8 @@ script:
                 id(lyrics_raw_lrc).clear();
                 lv_obj_add_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
                 lv_label_set_text(id(lyrics_label), "");
-            - http_request.get:
+            - lyrics_fetcher.request:
+                id: lyrics_fetch
                 url: !lambda |-
                   auto url_encode = [](const std::string &s) -> std::string {
                     std::string result;
@@ -39,41 +84,6 @@ script:
                   };
                   return "https://lrclib.net/api/search?track_name=" + url_encode(title) +
                          "&artist_name=" + url_encode(artist);
-                capture_response: true
-                max_response_buffer_size: 16384
-                on_response:
-                  - lambda: |-
-                      if (body.empty()) return;
-                      JsonDocument doc = json::parse_json(body);
-                      JsonArray array = doc.as<JsonArray>();
-                      if (array.isNull()) return;
-                      uint32_t duration_ms = id(sendspin_hub).get_track_duration_ms();
-                      const char* best_synced = nullptr;
-                      float best_delta = 1e9f;
-                      for (JsonObject item : array) {
-                        const char* synced = item["syncedLyrics"];
-                        if (synced == nullptr || synced[0] == '\0') continue;
-                        if (duration_ms > 0) {
-                          float dur = item["duration"] | 0.0f;
-                          if (dur > 0) {
-                            float delta = fabsf(dur * 1000.0f - (float) duration_ms);
-                            if (delta < best_delta) {
-                              best_delta = delta;
-                              best_synced = synced;
-                            }
-                            continue;
-                          }
-                        }
-                        best_synced = synced;
-                        break;
-                      }
-                      if (best_synced != nullptr) {
-                        id(lyrics_raw_lrc) = best_synced;
-                        id(lyrics_has_lyrics) = true;
-                        id(lyrics_current_index) = -1;
-                        lv_obj_clear_flag(id(lyrics_bar), LV_OBJ_FLAG_HIDDEN);
-                        id(lyrics_loop)->execute();
-                      }
 
   - id: update_lyric_line
     then:
@@ -138,6 +148,7 @@ script:
           }
 
   - id: lyrics_loop
+    mode: restart
     then:
       - while:
           condition:
