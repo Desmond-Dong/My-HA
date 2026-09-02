@@ -50,12 +50,12 @@ async def to_code(config):
 
     for conf in config.get(CONF_ON_RESULT, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
-        await automation.build_automation(trigger, [cg.std_string], conf)
+        await automation.build_automation(trigger, [(cg.std_string, "x")], conf)
         cg.add(var.set_result_trigger(trigger))
 
     for conf in config.get(CONF_ON_ERROR, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
-        await automation.build_automation(trigger, [cg.std_string], conf)
+        await automation.build_automation(trigger, [(cg.std_string, "x")], conf)
         cg.add(var.set_error_trigger(trigger))
 
     # esp_http_client is excluded from the ESPHome IDF build by default.
