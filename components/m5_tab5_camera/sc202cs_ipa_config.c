@@ -587,6 +587,21 @@ static const esp_ipa_acc_ccm_unit_t s_esp_ipa_acc_ccm_SC202CS_table[] = {
     },
 };
 
+static const esp_ipa_acc_ccm_gain_lut_t s_esp_ipa_acc_ccm_SC202CS_gain_lut[] = {
+    {
+        .gain = 1.0,
+        .strength = 1.0
+    },
+    {
+        .gain = 8.0,
+        .strength = 0.5
+    },
+    {
+        .gain = 16.0,
+        .strength = 0.0
+    },
+};
+
 static const esp_ipa_acc_ccm_config_t s_esp_ipa_acc_ccm_SC202CS_config = {
     .model = 0,
     .luma_env = "ae.luma.avg",
@@ -601,6 +616,9 @@ static const esp_ipa_acc_ccm_config_t s_esp_ipa_acc_ccm_SC202CS_config = {
     ,
     .ccm_table = s_esp_ipa_acc_ccm_SC202CS_table,
     .ccm_table_size = 12,
+    .gain_lut_enable = 1,
+    .gain_lut = s_esp_ipa_acc_ccm_SC202CS_gain_lut,
+    .gain_lut_size = ARRAY_SIZE(s_esp_ipa_acc_ccm_SC202CS_gain_lut),
 };
 
 static const isp_lsc_gain_t s_esp_ipa_acc_lsc_gain_r_SC202CS_1280_x_720_ct_2410_config[] = {

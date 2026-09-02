@@ -494,7 +494,26 @@
                             0.00,  0.00,  1.00
                         ]   
                     }
-                ]
+                ],
+                "gain_lut":
+                {
+                    "enable": 1,
+                    "table":
+                    [
+                        {
+                            "gain": 1.0,
+                            "strength": 1.0
+                        },
+                        {
+                            "gain": 8.0,
+                            "strength": 0.5
+                        },
+                        {
+                            "gain": 16.0,
+                            "strength": 0.0
+                        }
+                    ]
+                }
             },
             "lsc": {
                 "model": 0,
