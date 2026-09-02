@@ -137,6 +137,19 @@ logger:
     mipi_dsi: DEBUG
     display: DEBUG
     lvgl: DEBUG
+    # SC202CS auto-CCM computes values the P4 ISP rejects (> +/-4.0); the ISP
+    # keeps the last good matrix (image fine) but logs every frame -> busy loop.
+    # Silence the camera/ISP log tags:
+    isp_task: NONE
+    esp_ipa_ian: NONE
+    esp_ipa_awb: NONE
+    esp_ipa_agc: NONE
+    esp_ipa_adn: NONE
+    esp_ipa_acc: NONE
+    ISP_CCM: NONE
+    ISP: NONE
+    isp_video: NONE
+    esp_video: NONE
 
 psram:
   mode: hex
