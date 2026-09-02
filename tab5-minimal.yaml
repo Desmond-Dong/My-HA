@@ -192,6 +192,9 @@ wifi:
 
 captive_portal:
 
+debug:
+  update_interval: 30s
+
 improv_serial:
 
 i2c:
@@ -378,6 +381,18 @@ select:
           else:
             - switch.turn_on: wifi_antenna_int_ext
 sensor:
+  - platform: debug
+    free:
+      name: "Free Heap"
+    min_free:
+      name: "Min Free Heap"
+    psram:
+      name: "Free PSRAM"
+    fragmentation:
+      name: "Heap Fragmentation"
+    loop_time:
+      name: "Loop Time"
+
   - platform: wifi_signal
     id: wifi_signal_strength
     name: "WiFi Signal"
