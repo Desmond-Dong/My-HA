@@ -1078,7 +1078,7 @@ text_sensor:
 m5_tab5_camera:
   id: tab5_cam
   name: "Tab5 Camera"
-  resolution: "800X600"
+  resolution: "1280X720"
   jpeg_quality: 12
   framerate: 10
   internal: false
