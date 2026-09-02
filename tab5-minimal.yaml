@@ -89,6 +89,10 @@ esp32:
       CONFIG_ESP_IPA_ADN_ALGORITHM: "y"
       CONFIG_ESP_IPA_ATC_ALGORITHM: "y"
       CONFIG_ESP_SCCB_TRANS_TIMEOUT_DEFAULT: "500"
+      # sendspin's WebSocket server registers .is_websocket=true on esp_http_server
+      # and requires this option; without it the WS handshake fails and MA
+      # connect/drops in a loop (also starves the screen artwork).
+      CONFIG_HTTPD_WS_SUPPORT: "y"
 
 packages:
   # Use local files for development - faster iteration
