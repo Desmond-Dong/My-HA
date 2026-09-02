@@ -7,6 +7,11 @@
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
 #include "esphome/components/web_server_base/web_server_base.h"
+#include "esphome/components/api/api_server.h"
+#include "esphome/components/m5_tab5_camera/m5_tab5_camera.h"
+#include "esphome/components/network/network.h"
+
+#include <esp_heap_caps.h>
 
 #include <cstdio>
 #include <cstring>
@@ -83,6 +88,10 @@ class Rs485WebHandler : public AsyncWebHandler {
       this->handle_status(*request);
       return;
     }
+    if (method == HTTP_GET && url == "/debug") {
+      this->handle_debug(*request);
+      return;
+    }
     if (method == HTTP_GET && url == "/rs485/rx") {
       this->handle_rx(*request);
       return;
@@ -112,6 +121,27 @@ class Rs485WebHandler : public AsyncWebHandler {
   }
 
  protected:
+  // Full device diagnostics as JSON (browser-friendly: open http://<ip>/debug).
+  void handle_debug(AsyncWebServerRequest &request) {
+    bool api_ok = api::global_api_server != nullptr && api::global_api_server->is_connected();
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"uptime_s\":%u,"
+             "\"free_heap\":%u,\"min_free_heap\":%u,\"free_psram\":%u,"
+             "\"cam_requesters\":%u,\"cam_frames\":%u,\"cam_failures\":%u,"
+             "\"api_connected\":%s,\"network_connected\":%s}",
+             static_cast<unsigned>(millis() / 1000U),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+             static_cast<unsigned>(m5_tab5_camera::M5Tab5Camera::stat_requesters_.load()),
+             static_cast<unsigned>(m5_tab5_camera::M5Tab5Camera::stat_frames_.load()),
+             static_cast<unsigned>(m5_tab5_camera::M5Tab5Camera::stat_failures_.load()),
+             api_ok ? "true" : "false",
+             network::is_connected() ? "true" : "false");
+    request.send(200, "application/json", body);
+  }
+
   void handle_status(AsyncWebServerRequest &request) const {
     auto *self = this->bridge_;
     uint32_t rx_waiting = 0;

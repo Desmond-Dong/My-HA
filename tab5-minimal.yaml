@@ -327,6 +327,7 @@ binary_sensor:
   - platform: gpio
     id: charging
     name: "Charging Status"
+    entity_category: diagnostic
     pin:
       pi4ioe5v6408: pi4ioe2
       number: 6
@@ -339,6 +340,7 @@ binary_sensor:
   - platform: gpio
     id: headphone_detect
     name: "Headphone Detect"
+    entity_category: diagnostic
     pin:
       pi4ioe5v6408: pi4ioe1
       number: 7
@@ -358,6 +360,13 @@ binary_sensor:
           id: es8388_dac_output_select
           option: "LINE1"
       - logger.log: "Headphones disconnected - speaker enabled, LINE1 output active"
+
+  - platform: template
+    id: api_connected
+    name: "API Connected"
+    entity_category: diagnostic
+    lambda: |-
+      return api::global_api_server != nullptr && api::global_api_server->is_connected();
 
 select:
 # The DAC Output select needs to be manually 
@@ -397,6 +406,33 @@ sensor:
     loop_time:
       name: "Loop Time"
 
+  # Live camera pipeline counters (from m5_tab5_camera static atomics)
+  - platform: template
+    id: cam_frames
+    name: "Camera Frames"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: 'return (float) m5_tab5_camera::M5Tab5Camera::stat_frames_.load();'
+  - platform: template
+    id: cam_failures
+    name: "Camera Capture Failures"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: 'return (float) m5_tab5_camera::M5Tab5Camera::stat_failures_.load();'
+  - platform: template
+    id: cam_requesters
+    name: "Camera Requesters"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: 'return (float) m5_tab5_camera::M5Tab5Camera::stat_requesters_.load();'
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
   - platform: wifi_signal
     id: wifi_signal_strength
     name: "WiFi Signal"
@@ -406,12 +442,14 @@ sensor:
   - platform: internal_temperature
     id: esp32p4_temp
     name: "ESP32-P4 Internal Temperature"
+    entity_category: diagnostic
     update_interval: 60s
 
   - platform: bmi270
     type: temperature
     id: bmi270_temp
     name: "BMI270 Temperature"
+    entity_category: diagnostic
 
   - platform: motion
     motion_id: bmi270_imu
@@ -451,9 +489,11 @@ sensor:
     bus_voltage:
       id: battery_voltage
       name: Battery Voltage
+      entity_category: diagnostic
     current:
       id: battery_current
       name: Battery Current
+      entity_category: diagnostic
       # Positive means discharging
       # Negative means charging
   
@@ -480,6 +520,7 @@ sensor:
   - platform: template
     id: battery_percent
     name: "Battery Percentage"
+    entity_category: diagnostic
     unit_of_measurement: "%"
     accuracy_decimals: 0
     lambda: |-

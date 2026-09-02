@@ -65,6 +65,11 @@ class M5Tab5CameraImageReader : public camera::CameraImageReader {
 /* ---------------- M5Tab5Camera class ---------------- */
 class M5Tab5Camera : public camera::Camera {
  public:
+  /// Live counters for out-of-component diagnostics (web /debug endpoint).
+  static std::atomic<uint8_t> stat_requesters_;
+  static std::atomic<uint32_t> stat_frames_;
+  static std::atomic<uint32_t> stat_failures_;
+ public:
   M5Tab5Camera();
   ~M5Tab5Camera() override;
 

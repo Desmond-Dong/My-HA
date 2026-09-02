@@ -32,6 +32,11 @@ namespace esphome::m5_tab5_camera {
 
 static const char *const TAG = "m5_tab5_camera";
 
+// Diagnostics counters (mirrored for the web /debug endpoint).
+std::atomic<uint8_t> M5Tab5Camera::stat_requesters_{0};
+std::atomic<uint32_t> M5Tab5Camera::stat_frames_{0};
+std::atomic<uint32_t> M5Tab5Camera::stat_failures_{0};
+
 static uint32_t esphome_quality_to_hw_quality(uint8_t quality) {
   // ESPHome camera quality uses 6(best)..63(worst).
   // ESP32-P4 hardware JPEG uses 1..100 with larger = better quality.
@@ -114,6 +119,7 @@ void M5Tab5Camera::loop() {
 
   // Only capture when something is actually asking for a frame.
   uint8_t active = single_requesters_.load() | stream_requesters_.load();
+  stat_requesters_ = active;
   if (active == 0) {
     // Heartbeat so a silent "no image in HA" is distinguishable (no requesters)
     // from a capture/encode failure (failures counter climbing).
@@ -136,6 +142,7 @@ void M5Tab5Camera::loop() {
     // Avoid flooding HA logs while the capture/encode path is stabilised.
     uint32_t now_ms = millis();
     capture_failures_++;
+    stat_failures_ = capture_failures_;
     if (now_ms - last_capture_error_log_ > 5000U) {
       ESP_LOGW(TAG, "Frame capture failed (no frame dequeued or JPEG encode failed)");
       last_capture_error_log_ = now_ms;
@@ -145,6 +152,7 @@ void M5Tab5Camera::loop() {
 
   last_update_ = now;
   frames_published_++;
+  stat_frames_ = frames_published_;
   publish_frame_(jpeg, jpeg_len);
 }
 
