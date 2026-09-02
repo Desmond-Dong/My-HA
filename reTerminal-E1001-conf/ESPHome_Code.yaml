@@ -5,6 +5,8 @@ esphome:
     priority: 800
     then:
       - switch.turn_on: mic_enable
+      - output.turn_on: bsp_sd_enable
+      - pcf8563.read_time:               # 无网络时用 RTC 恢复系统时间
       - delay: 30s
       - component.update: dashboard_image
  #     - output.turn_on: bsp_sd_enable
@@ -40,8 +42,8 @@ api:
     key: "lY+oz71tYyiQ8XgimOxMd6pYEyWhLzzXqhNYsZatTmw="
   on_client_connected:
     - micro_wake_word.start:
-  services: # for playing music via Home Assistant
-    - service: play_song
+  actions: # for playing music via Home Assistant
+    - action: play_song
       variables:
         song_data: string
       then:
@@ -163,10 +165,10 @@ i2c:
   scl: GPIO20
   sda: GPIO19
 light:
-#  - platform: binary
-#    name: "Onboard LED"
-#    output: bsp_led
-#    id: onboard_led
+  - platform: binary
+    name: "Onboard LED"
+    output: led_output
+    id: onboard_led
   - platform: monochromatic
     output: buzzer_pwm
     icon: "mdi:volume-high"
@@ -351,13 +353,13 @@ button:
     entity_category: diagnostic
 
 output:
-#  - platform: gpio
-#    pin: GPIO6
-#    id: bsp_led
-#    inverted: true
-#  - platform: gpio
-#    pin: GPIO16
-#    id: bsp_sd_enable
+  - platform: gpio
+    pin: GPIO6
+    id: led_output
+    inverted: true
+  - platform: gpio
+    pin: GPIO16
+    id: bsp_sd_enable
   - platform: gpio
     pin: GPIO21
     id: bsp_battery_enable
@@ -370,6 +372,14 @@ output:
 binary_sensor:
   - platform: status
     name: "API Connected"
+    entity_category: diagnostic
+  - platform: gpio
+    pin:
+      number: GPIO15
+      mode: INPUT_PULLUP
+      inverted: true
+    id: sd_card_detect
+    name: "SD Card Detected"
     entity_category: diagnostic
   - platform: gpio    # Next page / Voice assistant
     pin:
@@ -421,6 +431,13 @@ binary_sensor:
 time:
   - platform: homeassistant
     id: ha_time
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
+  - platform: pcf8563
+    id: rtc_time
+    address: 0x51
+    update_interval: never
 
 globals:
   - id: disp_count

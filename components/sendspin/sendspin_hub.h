@@ -157,6 +157,9 @@ class SendspinHub final : public Component,
 
   /// @brief Returns the interpolated track progress in milliseconds, or 0 if the hub is not yet ready.
   uint32_t get_track_progress_ms() const;
+
+  /// @brief Returns the track duration in milliseconds, or 0 if unknown or the stream is live.
+  uint32_t get_track_duration_ms() const;
 #endif
 
 #ifdef USE_SENDSPIN_PLAYER

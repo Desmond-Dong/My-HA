@@ -218,6 +218,14 @@ uint32_t SendspinHub::get_track_progress_ms() const {
   }
   return 0;
 }
+
+// THREAD CONTEXT: Main loop (invoked from Sendspin components)
+uint32_t SendspinHub::get_track_duration_ms() const {
+  if (this->is_ready()) {
+    return this->metadata_role_->get_track_duration_ms();
+  }
+  return 0;
+}
 #endif
 
 #ifdef USE_SENDSPIN_PLAYER

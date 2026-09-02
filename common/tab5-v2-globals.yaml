@@ -165,3 +165,25 @@ globals:
     type: float
     restore_value: no
     initial_value: '1.0'
+
+  # Lyrics globals
+  - id: lyrics_raw_lrc
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: lyrics_has_lyrics
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: lyrics_current_index
+    type: int
+    restore_value: no
+    initial_value: "-1"
+  - id: lyrics_last_title
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: lyrics_last_artist
+    type: std::string
+    restore_value: no
+    initial_value: '""'

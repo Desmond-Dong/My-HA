@@ -27,7 +27,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [st7121, st7123, sendspin, generic_image, m5_tab5_camera]
+    components: [st7121, st7123, sendspin, generic_image, m5_tab5_camera, rs485_bridge]
 
 esphome:
   name: ${name}
@@ -114,6 +114,7 @@ packages:
   scripts_climate: !include common/scripts/scripts-climate.yaml
   scripts_media: !include common/scripts/scripts-media.yaml
   scripts_dashboard: !include common/scripts/scripts-dashboard.yaml
+  scripts_lyrics: !include common/scripts/scripts-lyrics.yaml
 
 esp32_hosted:
   variant: esp32c6
@@ -151,6 +152,23 @@ api:
 
 ota:
   platform: esphome
+
+# M5Stack Tab5 RS-485 (SIT3088): TX=GPIO20 RX=GPIO21 DIR=GPIO34, half-duplex.
+# Web passthrough services exposed by the firmware:
+#   ws://<ip>:8080/rs485/ws    full-duplex raw byte bridge (WebSocket)
+#   POST /rs485/tx             send raw bytes to the bus
+#   GET  /rs485/rx             read buffered bytes (?raw=1 for bytes, ?clear=0 to keep)
+#   GET  /rs485/status         JSON config + counters
+#   http://<ip>:8080/rs485/    built-in WebSocket console
+rs485_bridge:
+  tx_pin: 20
+  rx_pin: 21
+  dir_pin: 34
+  baud_rate: 9600
+  data_bits: 8
+  stop_bits: 1
+  parity: NONE
+  port: 8080
 
 wifi:
   ssid: !secret wifi_ssid
@@ -923,6 +941,10 @@ text_sensor:
             id: controls_title_label
             text: !lambda return x.c_str();
         - lvgl.widget.show: controls_title_label
+        - script.execute:
+            id: fetch_lyrics
+            title: !lambda return x;
+            artist: !lambda return id(sendspin_artist).state;
 
   - platform: sendspin
     sendspin_id: sendspin_hub
@@ -936,6 +958,10 @@ text_sensor:
             id: controls_artist_label
             text: !lambda return x.c_str();
         - lvgl.widget.show: controls_artist_label
+        - script.execute:
+            id: fetch_lyrics
+            title: !lambda return id(sendspin_title).state;
+            artist: !lambda return x;
 
   - platform: homeassistant
     id: light_state

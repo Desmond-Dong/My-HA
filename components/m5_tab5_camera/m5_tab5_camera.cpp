@@ -11,7 +11,6 @@
 #include <sys/mman.h>
 #include <linux/videodev2.h>
 #include <esp_heap_caps.h>
-#include <bsp/m5stack_tab5.h>
 #include <driver/jpeg_encode.h>
 #include <driver/ledc.h>
 
