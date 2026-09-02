@@ -53,15 +53,14 @@ class LyricsFetcher : public Component {
   Trigger<std::string> *error_trigger_{nullptr};
 };
 
-class RequestAction : public Action<> {
+template<typename... Ts> class RequestAction : public Action<Ts...> {
  public:
   explicit RequestAction(LyricsFetcher *parent) : parent_(parent) {}
-  void set_url(std::function<std::string()> url) { this->url_ = std::move(url); }
-  void play() override { this->parent_->request(this->url_()); }
+  TEMPLATABLE_VALUE(std::string, url)
+  void play() override { this->parent_->request(this->url_.value()); }
 
  protected:
   LyricsFetcher *parent_;
-  std::function<std::string()> url_;
 };
 
 class ResultTrigger : public Trigger<std::string> {};
