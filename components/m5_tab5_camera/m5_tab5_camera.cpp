@@ -18,6 +18,7 @@
 #include <esp_private/i2c_platform.h>
 // MIPI-CSI+V4L2 video init (pulled by BSP espr::m5stack_tab5)
 #include <esp_video_init.h>
+#include <esp_ipa.h>
 
 // Fallback for V4L2 controls if not in headers
 #ifndef V4L2_CID_HFLIP
@@ -248,6 +249,23 @@ bool M5Tab5Camera::init_camera_sensor_() {
     return false;
   }
   ESP_LOGI(TAG, "esp_video_init succeeded (MIPI-CSI + V4L2 bridge)");
+  // Log the IPA tuning actually compiled into THIS firmware, so a stale-flash
+  // (old binary still on the device) is immediately obvious from the boot log.
+  {
+    const esp_ipa_config_t *ipa_cfg =
+        (const esp_ipa_config_t *) esp_ipa_pipeline_get_config("SC202CS");
+    if (ipa_cfg != nullptr && ipa_cfg->acc != nullptr && ipa_cfg->acc->ccm != nullptr) {
+      const esp_ipa_acc_ccm_config_t *ccm = ipa_cfg->acc->ccm;
+      ESP_LOGI(TAG, "camera-tuning-v3: ccm model=%d gain_lut_enable=%d lut_size=%u",
+               (int) ccm->model, (int) ccm->gain_lut_enable, (unsigned) ccm->gain_lut_size);
+      for (uint32_t i = 0; ccm->gain_lut != nullptr && i < ccm->gain_lut_size; i++) {
+        ESP_LOGI(TAG, "  ccm gain_lut[%u]: gain=%.3f strength=%.3f", (unsigned) i,
+                 (double) ccm->gain_lut[i].gain, (double) ccm->gain_lut[i].strength);
+      }
+    } else {
+      ESP_LOGW(TAG, "camera-tuning-v3: SC202CS IPA config not found");
+    }
+  }
   // Suppress ISP verbose debug logs that flood the console at ~3ms intervals.
   esp_log_level_set("esp_ipa_ian", ESP_LOG_WARN);
   esp_log_level_set("esp_ipa_awb", ESP_LOG_WARN);
