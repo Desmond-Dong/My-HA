@@ -66,7 +66,7 @@ class Rs485WebHandler : public AsyncWebHandler {
       return false;
     char buf[AsyncWebServerRequest::URL_BUF_SIZE];
     StringRef url = request->url_to(buf);
-    return url == "/rs485" || url.rfind("/rs485/", 0) == 0;
+    return url == "/rs485" || strncmp(url.c_str(), "/rs485/", 7) == 0;
   }
 
   void handleRequest(AsyncWebServerRequest *request) override {
@@ -169,7 +169,7 @@ class Rs485WebHandler : public AsyncWebHandler {
       hex.push_back(kHex[b & 0x0f]);
     }
     std::string body = "{\"n\":" + std::to_string(snapshot.size()) + ",\"hex\":\"" + hex + "\"}";
-    request.send(200, "application/json", body);
+    request.send(200, "application/json", body.c_str());
   }
 
   Rs485Bridge *bridge_;
@@ -227,10 +227,11 @@ void Rs485Bridge::setup() {
 
 void Rs485Bridge::loop() {
   // Lazily attach to ESPHome's web server once it is up (avoids setup-order
-  // coupling); the handler only claims /rs485* URLs.
+  // coupling); the handler only claims /rs485* URLs. WebServerBase::init()
+  // creates the AsyncWebServer, so a non-null get_server() means it started.
   if (this->web_handler_ == nullptr) {
     auto *base = web_server_base::global_web_server_base;
-    if (base != nullptr && base->is_ready()) {
+    if (base != nullptr) {
       AsyncWebServer *server = base->get_server();
       if (server != nullptr) {
         this->web_handler_ = new Rs485WebHandler(this);  // NOLINT
