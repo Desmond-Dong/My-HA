@@ -44,7 +44,7 @@ script:
                 on_response:
                   - lambda: |-
                       if (body.empty()) return;
-                      json::JsonDocument doc = json::parse_json(body);
+                      JsonDocument doc = json::parse_json(body);
                       JsonArray array = doc.as<JsonArray>();
                       if (array.isNull()) return;
                       uint32_t duration_ms = id(sendspin_hub).get_track_duration_ms();
